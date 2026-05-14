@@ -9,6 +9,9 @@ export default function SettingsPage() {
   const [secretSet, setSecretSet] = useState(false);
   const [itemGroup, setItemGroup] = useState('Raw Material');
   const [nameField, setNameField] = useState('custom_item_name_zh');
+  const [whitelist, setWhitelist] = useState('');
+  const [whitelistStrict, setWhitelistStrict] = useState(false);
+  const [whitelistCount, setWhitelistCount] = useState(0);
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -20,6 +23,9 @@ export default function SettingsPage() {
     setSecretSet(s.api_secret_set);
     setItemGroup(s.item_group || 'Raw Material');
     setNameField(s.name_field || 'custom_item_name_zh');
+    setWhitelist(s.whitelist || '');
+    setWhitelistCount(s.whitelist_count || 0);
+    setWhitelistStrict(!!s.whitelist_strict);
   }
   useEffect(() => { load(); }, []);
 
@@ -32,6 +38,8 @@ export default function SettingsPage() {
         api_secret: apiSecret.trim() || undefined,
         item_group: itemGroup.trim(),
         name_field: nameField.trim() || 'custom_item_name_zh',
+        whitelist,
+        whitelist_strict: whitelistStrict,
       });
       setApiSecret('');
       await load();
@@ -45,11 +53,18 @@ export default function SettingsPage() {
     setSyncing(true); setMsg(null);
     try {
       const r = await api.syncErp();
-      const parts = [`写入 ${r.count} 条原材料`, `名称字段=${r.name_field}`];
+      const parts = [`写入 ${r.count} 条`, `名称字段=${r.name_field}`];
+      if (r.whitelist_used) parts.push(`白名单=${r.whitelist_size}`);
       if (!r.name_field_used && r.name_field_requested !== 'item_name') {
-        parts.push(`(ERP 未返回 ${r.name_field_requested},已退回 item_name)`);
+        parts.push(`(ERP 未返回 ${r.name_field_requested},退回 item_name)`);
       }
       if (r.name_missing > 0) parts.push(`${r.name_missing} 条缺中文名`);
+      if (r.strict_mode) {
+        parts.push(`严格模式: 清理 ${r.strict_purged} 条`);
+        if (r.strict_blocked.length > 0) {
+          parts.push(`${r.strict_blocked.length} 条被 BOM 引用跳过 (${r.strict_blocked.slice(0,3).map(b=>b.item_code).join(', ')}${r.strict_blocked.length>3?'...':''})`);
+        }
+      }
       if (r.note) parts.push(r.note);
       flash(`同步成功: ${parts.join(' · ')}`);
     } catch (e: any) {
@@ -119,6 +134,36 @@ export default function SettingsPage() {
             <p className="text-[11px] text-slate-400 mt-1">
               ERPNext「Item Name (ZH)」对应的字段名。若该字段不存在,自动退回 <code>item_name</code>。
             </p>
+          </div>
+        </div>
+
+        <div className="pt-2 border-t border-slate-100">
+          <label className="label flex items-center justify-between">
+            <span>Item Code 白名单 <span className="text-slate-400 normal-case font-normal">(可选)</span></span>
+            <span className="font-mono text-[10px] text-slate-400 normal-case tracking-normal">
+              已解析 {(whitelist || '').split(/[\s,;]+/).filter((s) => s && !s.startsWith('#')).length} 个 unique code
+              {whitelistCount !== undefined ? ` · 上次保存 ${whitelistCount}` : ''}
+            </span>
+          </label>
+          <textarea
+            className="input mt-1 font-mono text-xs min-h-[120px] resize-y"
+            value={whitelist}
+            onChange={(e) => setWhitelist(e.target.value)}
+            placeholder="一行一个 item_code,也支持逗号/分号/空格分隔。可加 #注释。&#10;&#10;例:&#10;PA99001&#10;BE01004 # 百事可乐&#10;SA01002, SA01003, SA01004"
+          />
+          <div className="mt-2 flex items-center gap-2 text-[12px]">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={whitelistStrict}
+                onChange={(e) => setWhitelistStrict(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-300"
+              />
+              <span className="font-medium text-slate-700">严格模式</span>
+            </label>
+            <span className="text-slate-400">
+              · 启用后,同步结束自动删除 source=erp 且不在白名单内的物料(被 BOM 引用的跳过)。留空白名单 = 退回按 Item Group 全量同步。
+            </span>
           </div>
         </div>
 

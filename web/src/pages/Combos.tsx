@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  DndContext, type DragEndEvent, useDraggable, useDroppable,
+  DndContext, DragOverlay,
+  type DragEndEvent, type DragStartEvent,
+  useDraggable, useDroppable,
   PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
 import {
@@ -13,13 +15,29 @@ import type { Combo, ComboLine, Product, Material, ComboBom, Channel } from '../
 export default function CombosPage() {
   const [combos, setCombos] = useState<Combo[]>([]);
   const [selectedId, setSelectedId] = useState<number | 'new' | null>(null);
+  const [pendingDrop, setPendingDrop] = useState<{ product: Product; ts: number } | null>(null);
 
   async function load() {
     setCombos(await api.listCombos());
   }
   useEffect(() => { load(); }, []);
 
+  const [activeProd, setActiveProd] = useState<Product | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  function onDragStart(e: DragStartEvent) {
+    setActiveProd((e.active.data.current?.product as Product | undefined) ?? null);
+  }
+  function onDragEnd(e: DragEndEvent) {
+    setActiveProd(null);
+    if (e.over?.id !== COMBO_DROP_ID) return;
+    const p = e.active.data.current?.product as Product | undefined;
+    if (!p) return;
+    setPendingDrop({ product: p, ts: Date.now() });
+  }
+  function onDragCancel() { setActiveProd(null); }
+
   return (
+    <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
     <div className="h-full grid grid-cols-[280px_1fr_320px]">
       <aside className="border-r border-slate-200 bg-white flex flex-col">
         <header className="p-4 border-b border-slate-100 flex items-center justify-between">
@@ -64,6 +82,8 @@ export default function CombosPage() {
           : <ComboEditor
               key={selectedId === 'new' ? 'new' : selectedId}
               comboId={selectedId === 'new' ? null : selectedId}
+              pendingDrop={pendingDrop}
+              onConsumed={() => setPendingDrop(null)}
               onSaved={(c) => { setSelectedId(c.id); load(); }}
               onDeleted={() => { setSelectedId(null); load(); }}
             />
@@ -71,8 +91,30 @@ export default function CombosPage() {
       </section>
 
       <aside className="border-l border-slate-200 bg-white flex flex-col">
-        <ProductDragPanel />
+        <ProductDragPanel
+          onAddItem={(p) => setPendingDrop({ product: p, ts: Date.now() })}
+        />
       </aside>
+    </div>
+    <DragOverlay dropAnimation={null}>
+      {activeProd ? <ProductDragPreview product={activeProd} /> : null}
+    </DragOverlay>
+    </DndContext>
+  );
+}
+
+function ProductDragPreview({ product }: { product: Product }) {
+  return (
+    <div
+      className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white shadow-xl border border-brand-300 w-72 cursor-grabbing"
+      style={{ pointerEvents: 'none' }}
+    >
+      <GripVertical size={14} className="text-brand-400" />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-slate-900 truncate">{product.name}</div>
+        <div className="font-mono text-[10px] text-slate-500 truncate">{product.code}</div>
+      </div>
+      <span className="text-[10px] text-slate-400">{product.line_count} 项</span>
     </div>
   );
 }
@@ -80,9 +122,11 @@ export default function CombosPage() {
 const COMBO_DROP_ID = 'combo-products-drop';
 
 function ComboEditor({
-  comboId, onSaved, onDeleted,
+  comboId, pendingDrop, onConsumed, onSaved, onDeleted,
 }: {
   comboId: number | null;
+  pendingDrop: { product: Product; ts: number } | null;
+  onConsumed: () => void;
   onSaved: (c: Combo) => void;
   onDeleted: () => void;
 }) {
@@ -90,10 +134,10 @@ function ComboEditor({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [lines, setLines] = useState<ComboLine[]>([]);
-  const [pkgTo, setPkgTo] = useState<string | null>(null);
-  const [pkgDi, setPkgDi] = useState<string | null>(null);
-  const [sauceTo, setSauceTo] = useState<string | null>(null);
-  const [sauceDi, setSauceDi] = useState<string | null>(null);
+  const [pkgTo, setPkgTo] = useState<string[]>([]);
+  const [pkgDi, setPkgDi] = useState<string[]>([]);
+  const [sauceTo, setSauceTo] = useState<string[]>([]);
+  const [sauceDi, setSauceDi] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -101,31 +145,41 @@ function ComboEditor({
   const [previewChannel, setPreviewChannel] = useState<Channel>('takeout');
   const [bom, setBom] = useState<ComboBom | null>(null);
 
-  // Material lookups
-  const [pkgToOpts, setPkgToOpts] = useState<Material[]>([]);
-  const [pkgDiOpts, setPkgDiOpts] = useState<Material[]>([]);
-  const [sauceToOpts, setSauceToOpts] = useState<Material[]>([]);
-  const [sauceDiOpts, setSauceDiOpts] = useState<Material[]>([]);
+  // 物料源:拉全部包材/酱料,前端按 (channel == target || channel == null) 过滤
+  const [pkgAll,   setPkgAll]   = useState<Material[]>([]);
+  const [sauceAll, setSauceAll] = useState<Material[]>([]);
 
   useEffect(() => {
-    api.listMaterials({ category: 'packaging', channel: 'takeout' }).then(setPkgToOpts);
-    api.listMaterials({ category: 'packaging', channel: 'dinein'  }).then(setPkgDiOpts);
-    api.listMaterials({ category: 'sauce',     channel: 'takeout' }).then(setSauceToOpts);
-    api.listMaterials({ category: 'sauce',     channel: 'dinein'  }).then(setSauceDiOpts);
+    api.listMaterials({ category: 'packaging' }).then(setPkgAll);
+    api.listMaterials({ category: 'sauce'     }).then(setSauceAll);
   }, []);
+
+  // 渠道在前、通用在后;同组按名字
+  function sortByChannelFirst(target: Channel) {
+    return (a: Material, b: Material) => {
+      const aw = a.channel === target ? 0 : 1;
+      const bw = b.channel === target ? 0 : 1;
+      if (aw !== bw) return aw - bw;
+      return a.item_name.localeCompare(b.item_name);
+    };
+  }
+  const pkgToOpts   = pkgAll.filter(x => x.channel === 'takeout' || x.channel == null).sort(sortByChannelFirst('takeout'));
+  const pkgDiOpts   = pkgAll.filter(x => x.channel === 'dinein'  || x.channel == null).sort(sortByChannelFirst('dinein'));
+  const sauceToOpts = sauceAll.filter(x => x.channel === 'takeout' || x.channel == null).sort(sortByChannelFirst('takeout'));
+  const sauceDiOpts = sauceAll.filter(x => x.channel === 'dinein'  || x.channel == null).sort(sortByChannelFirst('dinein'));
 
   useEffect(() => {
     if (comboId == null) {
       setCode(''); setName(''); setDescription(''); setLines([]);
-      setPkgTo(null); setPkgDi(null); setSauceTo(null); setSauceDi(null);
+      setPkgTo([]); setPkgDi([]); setSauceTo([]); setSauceDi([]);
       setBom(null); setErr(null);
       return;
     }
     api.getCombo(comboId).then((c) => {
       setCode(c.code); setName(c.name); setDescription(c.description || '');
       setLines(c.lines || []);
-      setPkgTo(c.packaging_takeout_code); setPkgDi(c.packaging_dinein_code);
-      setSauceTo(c.sauce_takeout_code); setSauceDi(c.sauce_dinein_code);
+      setPkgTo(c.packaging_takeout_codes || []); setPkgDi(c.packaging_dinein_codes || []);
+      setSauceTo(c.sauce_takeout_codes || []); setSauceDi(c.sauce_dinein_codes || []);
       setErr(null);
     });
   }, [comboId]);
@@ -136,11 +190,10 @@ function ComboEditor({
     api.comboBom(comboId, previewChannel).then(setBom).catch(() => setBom(null));
   }, [comboId, previewChannel, lines, pkgTo, pkgDi, sauceTo, sauceDi]);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-  function onDragEnd(e: DragEndEvent) {
-    if (e.over?.id !== COMBO_DROP_ID) return;
-    const p = e.active.data.current?.product as Product | undefined;
-    if (!p) return;
+  // Apply drop signal from the page-level DndContext
+  useEffect(() => {
+    if (!pendingDrop) return;
+    const p = pendingDrop.product;
     setLines((prev) => {
       const idx = prev.findIndex((l) => l.product_id === p.id);
       if (idx >= 0) {
@@ -153,18 +206,20 @@ function ComboEditor({
         product_code: p.code, product_name: p.name,
       }];
     });
-  }
+    onConsumed();
+  }, [pendingDrop]);
 
   async function save() {
     setSaving(true); setErr(null);
     try {
-      const payload = {
-        code: code.trim(), name: name.trim(),
+      const payload: any = {
+        name: name.trim(),
         description: description.trim() || null,
         lines: lines.map((l) => ({ product_id: l.product_id, qty: l.qty })),
-        packaging_takeout_code: pkgTo, packaging_dinein_code: pkgDi,
-        sauce_takeout_code: sauceTo, sauce_dinein_code: sauceDi,
+        packaging_takeout_codes: pkgTo, packaging_dinein_codes: pkgDi,
+        sauce_takeout_codes: sauceTo, sauce_dinein_codes: sauceDi,
       };
+      if (code.trim()) payload.code = code.trim();
       const c = comboId == null
         ? await api.createCombo(payload)
         : await api.updateCombo(comboId, payload);
@@ -182,21 +237,18 @@ function ComboEditor({
   }
 
   return (
-    <DndContext sensors={sensors} onDragEnd={onDragEnd}>
       <div className="h-full overflow-y-auto p-8 space-y-5">
         <header className="flex items-start justify-between">
           <div className="flex-1 max-w-xl space-y-3">
-            <div className="grid grid-cols-[1fr_2fr] gap-3">
-              <div>
-                <label className="label">编码</label>
-                <input className="input mt-1 font-mono" value={code}
-                       onChange={(e) => setCode(e.target.value)} placeholder="如 C-CHEESE-COMBO" />
-              </div>
-              <div>
-                <label className="label">套餐名称</label>
-                <input className="input mt-1" value={name}
-                       onChange={(e) => setName(e.target.value)} placeholder="如 芝士牛肉堡套餐" />
-              </div>
+            <div>
+              <label className="label flex items-center gap-2">
+                套餐名称
+                <span className="font-mono text-[10px] text-slate-400 normal-case tracking-normal">
+                  {code || '(保存后自动分配编码)'}
+                </span>
+              </label>
+              <input className="input mt-1" value={name}
+                     onChange={(e) => setName(e.target.value)} placeholder="如 芝士牛肉堡套餐" />
             </div>
             <div>
               <label className="label">描述 (可选)</label>
@@ -208,7 +260,7 @@ function ComboEditor({
             {comboId != null && (
               <button className="btn-danger" onClick={del}><Trash2 size={14} /> 删除</button>
             )}
-            <button className="btn-primary" onClick={save} disabled={saving || !code || !name}>
+            <button className="btn-primary" onClick={save} disabled={saving || !name}>
               <Save size={14} /> 保存
             </button>
           </div>
@@ -242,7 +294,6 @@ function ComboEditor({
           unsaved={comboId == null}
         />
       </div>
-    </DndContext>
   );
 }
 
@@ -252,8 +303,8 @@ function ChannelGroup({
   icon: React.ReactNode;
   title: string;
   colorClass: string;
-  packaging: { value: string | null; options: Material[]; onChange: (v: string | null) => void };
-  sauce:     { value: string | null; options: Material[]; onChange: (v: string | null) => void };
+  packaging: { value: string[]; options: Material[]; onChange: (v: string[]) => void };
+  sauce:     { value: string[]; options: Material[]; onChange: (v: string[]) => void };
 }) {
   return (
     <div className={'card p-4 border ' + colorClass}>
@@ -261,11 +312,11 @@ function ChannelGroup({
         {icon} {title}
       </div>
       <div className="space-y-3">
-        <MaterialPicker
+        <MaterialMultiPicker
           icon={<Package size={13} className="text-slate-400" />}
           label="包材" value={packaging.value} options={packaging.options} onChange={packaging.onChange}
         />
-        <MaterialPicker
+        <MaterialMultiPicker
           icon={<Droplet size={13} className="text-slate-400" />}
           label="酱料" value={sauce.value} options={sauce.options} onChange={sauce.onChange}
         />
@@ -274,34 +325,65 @@ function ChannelGroup({
   );
 }
 
-function MaterialPicker({
+function MaterialMultiPicker({
   icon, label, value, options, onChange,
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string | null;
+  value: string[];
   options: Material[];
-  onChange: (v: string | null) => void;
+  onChange: (v: string[]) => void;
 }) {
+  const byCode = new Map(options.map((o) => [o.item_code, o]));
+  const remaining = options.filter((o) => !value.includes(o.item_code));
   return (
-    <label className="block">
+    <div>
       <span className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-slate-500 mb-1">
-        {icon} {label}
+        {icon} {label}{value.length > 0 && <span className="text-slate-400 normal-case">· 已选 {value.length}</span>}
       </span>
-      <div className="relative">
-        <select
-          className="input appearance-none pr-8 bg-white"
-          value={value ?? ''}
-          onChange={(e) => onChange(e.target.value || null)}
-        >
-          <option value="">— 不配置 —</option>
-          {options.map((o) => (
-            <option key={o.item_code} value={o.item_code}>{o.item_name} ({o.item_code})</option>
-          ))}
-        </select>
-        <ChevronDown size={14} className="absolute right-2.5 top-2.5 text-slate-400 pointer-events-none" />
+      <div className="rounded-lg border border-slate-200 bg-white p-1.5 flex flex-wrap gap-1.5 min-h-[36px]">
+        {value.map((code) => {
+          const m = byCode.get(code);
+          const name = m ? m.item_name.split('|')[0].trim() : code;
+          const tagClass = m?.channel === 'takeout' ? 'chip-pkg-to'
+                          : m?.channel === 'dinein' ? 'chip-pkg-di'
+                          : 'chip bg-slate-100 text-slate-600';
+          return (
+            <span key={code} className={tagClass + ' pr-1 pl-2 max-w-full'}>
+              <span className="truncate">{name}</span>
+              <button
+                onClick={() => onChange(value.filter((c) => c !== code))}
+                className="ml-1 -mr-0.5 rounded hover:bg-black/10 p-0.5"
+                title="移除"
+              >
+                <X size={11} />
+              </button>
+            </span>
+          );
+        })}
+        <div className="relative flex-1 min-w-[150px]">
+          <select
+            className="w-full appearance-none bg-transparent text-xs text-slate-500 focus:outline-none px-1 py-0.5 cursor-pointer hover:text-brand-600"
+            value=""
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v) onChange([...value, v]);
+              e.target.value = '';
+            }}
+          >
+            <option value="">+ 添加{label}…</option>
+            {remaining.map((o) => {
+              const tag = o.channel === 'takeout' ? '[外卖]' : o.channel === 'dinein' ? '[到店]' : '[通用]';
+              return (
+                <option key={o.item_code} value={o.item_code}>
+                  {tag} {o.item_name.split('|')[0].trim()} ({o.item_code})
+                </option>
+              );
+            })}
+          </select>
+        </div>
       </div>
-    </label>
+    </div>
   );
 }
 
@@ -452,7 +534,7 @@ function round(n: number) {
 
 /* ---------------- Product drag panel ---------------- */
 
-function ProductDragPanel() {
+function ProductDragPanel({ onAddItem }: { onAddItem?: (p: Product) => void }) {
   const [items, setItems] = useState<Product[]>([]);
   const [q, setQ] = useState('');
   useEffect(() => { api.listProducts().then(setItems); }, []);
@@ -463,7 +545,7 @@ function ProductDragPanel() {
     <>
       <header className="p-4 border-b border-slate-100">
         <div className="text-sm font-semibold text-slate-900">单品库</div>
-        <div className="text-[11px] text-slate-500 mt-0.5">拖到中间区域加入套餐</div>
+        <div className="text-[11px] text-slate-500 mt-0.5">拖到中间区域,或直接点击 +1</div>
         <div className="relative mt-3">
           <Search size={14} className="absolute left-2.5 top-2 text-slate-400" />
           <input className="input pl-7" placeholder="搜索单品…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -475,31 +557,34 @@ function ProductDragPanel() {
             没有单品<br /><span className="text-xs">请先在「单品 BOM」配置</span>
           </div>
         )}
-        {filtered.map((p) => <DraggableProduct key={p.id} product={p} />)}
+        {filtered.map((p) => (
+          <DraggableProduct
+            key={p.id} product={p}
+            onAdd={onAddItem ? () => onAddItem(p) : undefined}
+          />
+        ))}
       </div>
     </>
   );
 }
 
-function DraggableProduct({ product }: { product: Product }) {
+function DraggableProduct({ product, onAdd }: { product: Product; onAdd?: () => void }) {
   const id = `prod-${product.id}`;
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id, data: { product },
   });
-  const style: React.CSSProperties = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 50 }
-    : {};
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{ opacity: isDragging ? 0.4 : 1 }}
       {...listeners}
       {...attributes}
+      onClick={onAdd}
       className={
-        'group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-grab active:cursor-grabbing ' +
-        'hover:bg-brand-50 hover:shadow-sm border border-transparent hover:border-brand-200 transition ' +
-        (isDragging ? 'bg-white shadow-lg border-brand-300' : '')
+        'group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer active:cursor-grabbing ' +
+        'hover:bg-brand-50 hover:shadow-sm border border-transparent hover:border-brand-200 transition'
       }
+      title={onAdd ? '点击或拖到中间区域加入套餐' : undefined}
     >
       <GripVertical size={14} className="text-slate-300 group-hover:text-brand-400" />
       <div className="min-w-0 flex-1">

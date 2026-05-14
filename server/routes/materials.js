@@ -17,7 +17,7 @@ materialsRouter.get('/', (req, res) => {
 materialsRouter.post('/', (req, res) => {
   const { item_code, item_name, uom, category = 'raw', channel = null, source = 'manual' } = req.body || {};
   if (!item_code || !item_name) return res.status(400).json({ error: 'item_code and item_name required' });
-  if (!['raw', 'packaging', 'sauce'].includes(category)) return res.status(400).json({ error: 'invalid category' });
+  if (!['raw', 'packaging', 'sauce', 'other'].includes(category)) return res.status(400).json({ error: 'invalid category' });
   if (channel && !['takeout', 'dinein'].includes(channel)) return res.status(400).json({ error: 'invalid channel' });
   try {
     db.prepare(
@@ -107,6 +107,97 @@ materialsRouter.post('/auto-classify', (req, res) => {
     scanned: rows.length,
     sauce: { count: moves.sauce.length,     samples: moves.sauce.slice(0, 10),     items: dryRun ? moves.sauce : undefined },
     packaging: { count: moves.packaging.length, samples: moves.packaging.slice(0, 10), items: dryRun ? moves.packaging : undefined },
+  });
+});
+
+// 批量更新 category / channel (其他字段不做批量,逐条编辑足够)
+// POST /api/materials/bulk-update
+//   body: { item_codes: string[], category?, channel?: 'takeout'|'dinein'|null }
+materialsRouter.post('/bulk-update', (req, res) => {
+  const { item_codes, category, channel } = req.body || {};
+  if (!Array.isArray(item_codes) || item_codes.length === 0) {
+    return res.status(400).json({ error: 'item_codes required' });
+  }
+  if (category !== undefined && !['raw', 'packaging', 'sauce', 'other'].includes(category)) {
+    return res.status(400).json({ error: 'invalid category' });
+  }
+  if (channel !== undefined && channel !== null && !['takeout', 'dinein'].includes(channel)) {
+    return res.status(400).json({ error: 'invalid channel' });
+  }
+  const sets = [];
+  const args = [];
+  if (category !== undefined) { sets.push('category = ?'); args.push(category); }
+  if (channel  !== undefined) { sets.push('channel = ?');  args.push(channel); }
+  if (sets.length === 0) return res.json({ updated: 0, note: '未指定任何字段' });
+  sets.push("updated_at = datetime('now')");
+  const placeholders = item_codes.map(() => '?').join(',');
+  const info = db.prepare(
+    `UPDATE materials SET ${sets.join(', ')} WHERE item_code IN (${placeholders})`
+  ).run(...args, ...item_codes);
+  res.json({ updated: info.changes });
+});
+
+// 批量删除 (引用方 FK 拒绝删除时,会逐条 try,把失败列表返回)
+// POST /api/materials/bulk-delete   body: { item_codes: string[] }
+materialsRouter.post('/bulk-delete', (req, res) => {
+  const { item_codes } = req.body || {};
+  if (!Array.isArray(item_codes) || item_codes.length === 0) {
+    return res.status(400).json({ error: 'item_codes required' });
+  }
+  const del = db.prepare('DELETE FROM materials WHERE item_code = ?');
+  let deleted = 0;
+  const blocked = [];
+  for (const code of item_codes) {
+    try { if (del.run(code).changes) deleted++; }
+    catch (e) { blocked.push({ item_code: code, reason: e.message }); }
+  }
+  res.json({ deleted, blocked });
+});
+
+// 把 ERP 来的 channel=NULL 的包材/酱料按名字关键词自动分流到 takeout/dinein
+// POST /api/materials/split-channel              -> apply
+// POST /api/materials/split-channel?dry_run=1    -> preview
+const TAKEOUT_KW = /外卖|外帶|外带|打包|takeout|take[\s-]?away|to[\s-]?go|TO\b|กลับบ้าน|เทคอเวย์|กลับ|ห่อกลับ|ใส่ถุง/i;
+const DINEIN_KW  = /堂食|到店|店内|内用|內用|dine[\s-]?in|dinein|in[\s-]?store|on[\s-]?site|DI\b|ในร้าน|ทานในร้าน|เสิร์ฟในร้าน|ทานที่ร้าน/i;
+
+function inferChannel(name) {
+  if (!name) return null;
+  const isTo = TAKEOUT_KW.test(name);
+  const isDi = DINEIN_KW.test(name);
+  if (isTo && !isDi) return 'takeout';
+  if (isDi && !isTo) return 'dinein';
+  return null; // 无明显信号或两边都中,保留 null 让用户人工指定
+}
+
+materialsRouter.post('/split-channel', (req, res) => {
+  const dryRun = req.query.dry_run === '1' || req.body?.dry_run === true;
+
+  const rows = db.prepare(`
+    SELECT item_code, item_name, category FROM materials
+    WHERE source = 'erp' AND category IN ('packaging','sauce') AND channel IS NULL
+  `).all();
+
+  const moves = { takeout: [], dinein: [] };
+  for (const r of rows) {
+    const ch = inferChannel(r.item_name);
+    if (ch) moves[ch].push({ item_code: r.item_code, item_name: r.item_name, category: r.category });
+  }
+
+  if (!dryRun) {
+    const upd = db.prepare(`UPDATE materials SET channel = ?, updated_at = datetime('now') WHERE item_code = ?`);
+    const tx = db.transaction(() => {
+      for (const r of moves.takeout) upd.run('takeout', r.item_code);
+      for (const r of moves.dinein)  upd.run('dinein',  r.item_code);
+    });
+    tx();
+  }
+
+  res.json({
+    dry_run: !!dryRun,
+    scanned: rows.length,
+    untouched: rows.length - moves.takeout.length - moves.dinein.length,
+    takeout: { count: moves.takeout.length, items: moves.takeout },
+    dinein:  { count: moves.dinein.length,  items: moves.dinein  },
   });
 });
 

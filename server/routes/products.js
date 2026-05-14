@@ -3,6 +3,16 @@ import { db } from '../db.js';
 
 export const productsRouter = Router();
 
+function nextProductCode() {
+  const row = db.prepare(`
+    SELECT MAX(CAST(SUBSTR(code, 3) AS INTEGER)) AS n
+    FROM products
+    WHERE code GLOB 'P-[0-9]*'
+  `).get();
+  const next = (row?.n || 0) + 1;
+  return `P-${String(next).padStart(4, '0')}`;
+}
+
 function loadProduct(id) {
   const p = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
   if (!p) return null;
@@ -34,11 +44,12 @@ productsRouter.get('/:id', (req, res) => {
 
 productsRouter.post('/', (req, res) => {
   const { code, name, description, lines = [] } = req.body || {};
-  if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+  if (!name) return res.status(400).json({ error: 'name required' });
+  const finalCode = (code && code.trim()) ? code.trim() : nextProductCode();
   try {
     const tx = db.transaction(() => {
       const info = db.prepare('INSERT INTO products(code, name, description) VALUES (?, ?, ?)')
-        .run(code, name, description || null);
+        .run(finalCode, name, description || null);
       const insLine = db.prepare('INSERT INTO product_lines(product_id, material_code, qty) VALUES (?, ?, ?)');
       for (const ln of lines) {
         if (!ln.material_code) continue;

@@ -60,6 +60,17 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 `);
 
+// Migrate combos to support multiple packaging/sauce per channel via JSON-array TEXT columns.
+// Old single-code columns 保留用于向后兼容,新代码只读写 *_codes 字段。
+function ensureColumn(table, col, def) {
+  try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); }
+  catch (e) { /* column already exists */ }
+}
+ensureColumn('combos', 'packaging_takeout_codes', 'TEXT');
+ensureColumn('combos', 'packaging_dinein_codes',  'TEXT');
+ensureColumn('combos', 'sauce_takeout_codes',     'TEXT');
+ensureColumn('combos', 'sauce_dinein_codes',      'TEXT');
+
 export function getSetting(key) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
   return row ? row.value : null;

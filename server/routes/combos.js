@@ -3,6 +3,26 @@ import { db } from '../db.js';
 
 export const combosRouter = Router();
 
+function nextComboCode() {
+  const row = db.prepare(`
+    SELECT MAX(CAST(SUBSTR(code, 3) AS INTEGER)) AS n
+    FROM combos
+    WHERE code GLOB 'C-[0-9]*'
+  `).get();
+  const next = (row?.n || 0) + 1;
+  return `C-${String(next).padStart(4, '0')}`;
+}
+
+function parseCodes(text, fallbackSingle) {
+  if (text) {
+    try {
+      const arr = JSON.parse(text);
+      if (Array.isArray(arr)) return arr.filter(Boolean);
+    } catch {}
+  }
+  return fallbackSingle ? [fallbackSingle] : [];
+}
+
 function loadCombo(id) {
   const c = db.prepare('SELECT * FROM combos WHERE id = ?').get(id);
   if (!c) return null;
@@ -14,6 +34,11 @@ function loadCombo(id) {
     WHERE cl.combo_id = ?
     ORDER BY cl.id
   `).all(id);
+  // 把 JSON-array TEXT 解码成数组 (保留旧 *_code 单值为兼容)
+  c.packaging_takeout_codes = parseCodes(c.packaging_takeout_codes, c.packaging_takeout_code);
+  c.packaging_dinein_codes  = parseCodes(c.packaging_dinein_codes,  c.packaging_dinein_code);
+  c.sauce_takeout_codes     = parseCodes(c.sauce_takeout_codes,     c.sauce_takeout_code);
+  c.sauce_dinein_codes      = parseCodes(c.sauce_dinein_codes,      c.sauce_dinein_code);
   return c;
 }
 
@@ -32,24 +57,40 @@ combosRouter.get('/:id', (req, res) => {
   res.json(c);
 });
 
+// 接收数组或单值,标准化成 unique 数组,JSON.stringify 后落库
+function normalizeCodes(arr, singleField) {
+  if (Array.isArray(arr)) return [...new Set(arr.filter(Boolean).map(String))];
+  if (typeof arr === 'string' && arr) return [arr];
+  if (singleField) return [singleField];
+  return [];
+}
+
 combosRouter.post('/', (req, res) => {
   const {
     code, name, description, lines = [],
+    packaging_takeout_codes, packaging_dinein_codes,
+    sauce_takeout_codes, sauce_dinein_codes,
+    // backwards-compat 旧字段
     packaging_takeout_code, packaging_dinein_code,
     sauce_takeout_code, sauce_dinein_code,
   } = req.body || {};
-  if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+  if (!name) return res.status(400).json({ error: 'name required' });
+  const finalCode = (code && code.trim()) ? code.trim() : nextComboCode();
+  const pkgTo = normalizeCodes(packaging_takeout_codes, packaging_takeout_code);
+  const pkgDi = normalizeCodes(packaging_dinein_codes,  packaging_dinein_code);
+  const sauTo = normalizeCodes(sauce_takeout_codes,     sauce_takeout_code);
+  const sauDi = normalizeCodes(sauce_dinein_codes,      sauce_dinein_code);
   try {
     const tx = db.transaction(() => {
       const info = db.prepare(`
         INSERT INTO combos(code, name, description,
-          packaging_takeout_code, packaging_dinein_code,
-          sauce_takeout_code, sauce_dinein_code)
+          packaging_takeout_codes, packaging_dinein_codes,
+          sauce_takeout_codes, sauce_dinein_codes)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(
-        code, name, description || null,
-        packaging_takeout_code || null, packaging_dinein_code || null,
-        sauce_takeout_code || null, sauce_dinein_code || null,
+        finalCode, name, description || null,
+        JSON.stringify(pkgTo), JSON.stringify(pkgDi),
+        JSON.stringify(sauTo), JSON.stringify(sauDi),
       );
       const insLine = db.prepare('INSERT INTO combo_lines(combo_id, product_id, qty) VALUES (?, ?, ?)');
       for (const ln of lines) {
@@ -70,24 +111,30 @@ combosRouter.put('/:id', (req, res) => {
   if (!existing) return res.status(404).json({ error: 'not found' });
   const {
     code, name, description, lines,
+    packaging_takeout_codes, packaging_dinein_codes,
+    sauce_takeout_codes, sauce_dinein_codes,
     packaging_takeout_code, packaging_dinein_code,
     sauce_takeout_code, sauce_dinein_code,
   } = req.body || {};
+  const pkgTo = normalizeCodes(packaging_takeout_codes, packaging_takeout_code);
+  const pkgDi = normalizeCodes(packaging_dinein_codes,  packaging_dinein_code);
+  const sauTo = normalizeCodes(sauce_takeout_codes,     sauce_takeout_code);
+  const sauDi = normalizeCodes(sauce_dinein_codes,      sauce_dinein_code);
   try {
     const tx = db.transaction(() => {
       db.prepare(`UPDATE combos SET
           code = COALESCE(?, code),
           name = COALESCE(?, name),
           description = ?,
-          packaging_takeout_code = ?,
-          packaging_dinein_code  = ?,
-          sauce_takeout_code     = ?,
-          sauce_dinein_code      = ?
+          packaging_takeout_codes = ?,
+          packaging_dinein_codes  = ?,
+          sauce_takeout_codes     = ?,
+          sauce_dinein_codes      = ?
         WHERE id = ?`)
         .run(
           code ?? null, name ?? null, description ?? null,
-          packaging_takeout_code ?? null, packaging_dinein_code ?? null,
-          sauce_takeout_code ?? null, sauce_dinein_code ?? null,
+          JSON.stringify(pkgTo), JSON.stringify(pkgDi),
+          JSON.stringify(sauTo), JSON.stringify(sauDi),
           id
         );
       if (Array.isArray(lines)) {
@@ -139,10 +186,16 @@ combosRouter.get('/:id/bom', (req, res) => {
     for (const m of matLines) add(m.material_code, m.qty * ln.combo_qty);
   }
 
-  const pkgCode = channel === 'takeout' ? combo.packaging_takeout_code : combo.packaging_dinein_code;
-  const sauceCode = channel === 'takeout' ? combo.sauce_takeout_code : combo.sauce_dinein_code;
-  if (pkgCode) add(pkgCode, 1);
-  if (sauceCode) add(sauceCode, 1);
+  const pkgCodes = parseCodes(
+    channel === 'takeout' ? combo.packaging_takeout_codes : combo.packaging_dinein_codes,
+    channel === 'takeout' ? combo.packaging_takeout_code  : combo.packaging_dinein_code,
+  );
+  const sauceCodes = parseCodes(
+    channel === 'takeout' ? combo.sauce_takeout_codes : combo.sauce_dinein_codes,
+    channel === 'takeout' ? combo.sauce_takeout_code  : combo.sauce_dinein_code,
+  );
+  for (const c of pkgCodes)   add(c, 1);
+  for (const c of sauceCodes) add(c, 1);
 
   // Enrich with material meta
   const codes = [...bom.keys()];
@@ -161,8 +214,8 @@ combosRouter.get('/:id/bom', (req, res) => {
   res.json({
     combo_id: id,
     channel,
-    packaging_code: pkgCode,
-    sauce_code: sauceCode,
+    packaging_codes: pkgCodes,
+    sauce_codes: sauceCodes,
     products: lines,
     bom: result,
   });

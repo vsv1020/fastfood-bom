@@ -1,15 +1,61 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, RefreshCw, Search, Trash2, Pencil, X, Check, Merge, Sparkles } from 'lucide-react';
+import { Plus, RefreshCw, Search, Trash2, Pencil, X, Check, Merge, Sparkles, Split } from 'lucide-react';
 import { api } from '../api';
 import type { Material, Category, Channel } from '../types';
 
-type Filter = { category: Category; channel: Channel | '' };
+// Tab keys 不包含 'other' — 未分类的物料仅出现在「全部」tab,不占独立 tab
+type CategoryTabKey = 'all' | 'raw' | 'packaging' | 'sauce';
+type Filter = { category: CategoryTabKey; channel: Channel | '' };
 
-const CAT_LABELS: Record<Category, string> = {
+const CAT_LABELS: Record<CategoryTabKey, string> = {
+  all: '全部',
   raw: '原材料',
   packaging: '包材',
   sauce: '酱料',
 };
+
+function CategoryChip({ cat }: { cat: Category }) {
+  if (cat === 'raw') return <span className="chip-raw">原料</span>;
+  if (cat === 'packaging') return <span className="chip-pkg-to">包材</span>;
+  if (cat === 'sauce') return <span className="chip-sauce">酱料</span>;
+  return <span className="chip bg-slate-100 text-slate-500">未分类</span>;
+}
+
+// 行内类别切换 — 点 chip-like select 直接改类别
+function CategorySelect({ material, onChanged }: { material: Material; onChanged: () => void }) {
+  const baseClass = 'appearance-none cursor-pointer rounded-full px-2 py-0.5 text-xs font-medium border focus:outline-none focus:ring-2 focus:ring-brand-200';
+  const styleByCat: Record<Category, string> = {
+    raw:       'bg-amber-50 text-amber-700 border-amber-100 hover:border-amber-300',
+    packaging: 'bg-sky-50 text-sky-700 border-sky-100 hover:border-sky-300',
+    sauce:     'bg-rose-50 text-rose-700 border-rose-100 hover:border-rose-300',
+    other:     'bg-slate-100 text-slate-500 border-slate-200 hover:border-slate-300',
+  };
+  return (
+    <select
+      className={baseClass + ' ' + styleByCat[material.category]}
+      value={material.category}
+      title="点击切换类别 — 选「未分类」可从分类 tab 移除"
+      onChange={async (e) => {
+        const newCat = e.target.value as Category;
+        if (newCat === material.category) return;
+        try {
+          // raw 或 other 不应有渠道,清空 channel
+          const clearChannel = newCat === 'raw' || newCat === 'other';
+          await api.updateMaterial(material.item_code, {
+            category: newCat,
+            channel: clearChannel ? null : (material.channel ?? null),
+          });
+          onChanged();
+        } catch (err: any) { alert('更新失败: ' + err.message); }
+      }}
+    >
+      <option value="raw">原料</option>
+      <option value="packaging">包材</option>
+      <option value="sauce">酱料</option>
+      <option value="other">未分类</option>
+    </select>
+  );
+}
 
 function CategoryTab({ active, onClick, children, count }: {
   active: boolean; onClick: () => void; children: React.ReactNode; count?: number;
@@ -42,25 +88,41 @@ function ChannelChip({ channel }: { channel: Channel | null }) {
 }
 
 export default function MaterialsPage() {
-  const [filter, setFilter] = useState<Filter>({ category: 'raw', channel: '' });
+  const [filter, setFilter] = useState<Filter>({ category: 'all', channel: '' });
   const [items, setItems] = useState<Material[]>([]);
-  const [counts, setCounts] = useState<Record<Category, number>>({ raw: 0, packaging: 0, sauce: 0 });
+  const [counts, setCounts] = useState<Record<CategoryTabKey, number>>({ all: 0, raw: 0, packaging: 0, sauce: 0 });
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<Material | 'new' | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkCat, setBulkCat] = useState<Category | ''>('');
+  const [bulkChan, setBulkChan] = useState<Channel | 'null' | ''>('');
+
+  // 切换 tab / 渠道筛选 / 搜索时清空选择
+  useEffect(() => { setSelected(new Set()); }, [filter.category, filter.channel, q]);
 
   async function load() {
     setLoading(true);
     try {
-      const [list, raw, pkg, sauce] = await Promise.all([
-        api.listMaterials({ category: filter.category, channel: filter.channel || undefined, q: q || undefined }),
+      const [list, raw, pkg, sauce, other] = await Promise.all([
+        api.listMaterials({
+          category: filter.category === 'all' ? undefined : filter.category,
+          channel: filter.channel || undefined,
+          q: q || undefined,
+        }),
         api.listMaterials({ category: 'raw' }),
         api.listMaterials({ category: 'packaging' }),
         api.listMaterials({ category: 'sauce' }),
+        api.listMaterials({ category: 'other' }),
       ]);
       setItems(list);
-      setCounts({ raw: raw.length, packaging: pkg.length, sauce: sauce.length });
+      setCounts({
+        all: raw.length + pkg.length + sauce.length + other.length,
+        raw: raw.length,
+        packaging: pkg.length,
+        sauce: sauce.length,
+      });
     } finally {
       setLoading(false);
     }
@@ -116,6 +178,36 @@ export default function MaterialsPage() {
     setTimeout(() => setSyncMsg(null), 6000);
   }
 
+  async function onSplitChannel() {
+    setSyncMsg('扫描渠道关键词中…');
+    try {
+      const dry = await api.splitChannel(true);
+      const t = dry.takeout.count, d = dry.dinein.count, u = dry.untouched;
+      if (t + d === 0) {
+        setSyncMsg(`扫描 ${dry.scanned} 条 channel=NULL 包材/酱料,无法从名字识别外卖/到店,保持原状`);
+        setTimeout(() => setSyncMsg(null), 6000);
+        return;
+      }
+      const sampTo = dry.takeout.items.slice(0, 3).map(x => `  ${x.item_code} ${x.item_name.split('|')[0].trim()}`).join('\n');
+      const sampDi = dry.dinein.items.slice(0, 3).map(x => `  ${x.item_code} ${x.item_name.split('|')[0].trim()}`).join('\n');
+      if (!confirm(
+        `扫描了 ${dry.scanned} 条无渠道的 ERP 包材/酱料:\n\n` +
+        `→ 外卖 ${t} 条:\n${sampTo}${t > 3 ? `\n  …还有 ${t - 3} 条` : ''}\n\n` +
+        `→ 到店 ${d} 条:\n${sampDi}${d > 3 ? `\n  …还有 ${d - 3} 条` : ''}\n\n` +
+        `保留通用(无明显信号): ${u} 条\n\n确认执行?`
+      )) {
+        setSyncMsg(null);
+        return;
+      }
+      const r = await api.splitChannel(false);
+      setSyncMsg(`分流完成: 外卖 ${r.takeout.count} · 到店 ${r.dinein.count} · 保留通用 ${r.untouched}`);
+      load();
+    } catch (e: any) {
+      setSyncMsg('分流失败: ' + e.message);
+    }
+    setTimeout(() => setSyncMsg(null), 6000);
+  }
+
   async function onDedupe() {
     setSyncMsg('扫描重复中…');
     try {
@@ -145,6 +237,55 @@ export default function MaterialsPage() {
     setTimeout(() => setSyncMsg(null), 6000);
   }
 
+  function toggleOne(code: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code); else next.add(code);
+      return next;
+    });
+  }
+  function toggleAllVisible() {
+    if (selected.size === items.length && items.length > 0) setSelected(new Set());
+    else setSelected(new Set(items.map((i) => i.item_code)));
+  }
+  function clearSelection() { setSelected(new Set()); setBulkCat(''); setBulkChan(''); }
+
+  async function applyBulk() {
+    if (!bulkCat && bulkChan === '') {
+      setSyncMsg('请先选择「→ 类别」或「→ 渠道」其中一项');
+      setTimeout(() => setSyncMsg(null), 4000);
+      return;
+    }
+    const updates: { category?: Category; channel?: Channel | null } = {};
+    if (bulkCat) updates.category = bulkCat;
+    if (bulkChan === 'null') updates.channel = null;
+    else if (bulkChan) updates.channel = bulkChan;
+    try {
+      const r = await api.bulkUpdateMaterials([...selected], updates);
+      setSyncMsg(`批量更新成功: 修改 ${r.updated} 条`);
+      clearSelection();
+      load();
+    } catch (e: any) {
+      setSyncMsg('批量更新失败: ' + e.message);
+    }
+    setTimeout(() => setSyncMsg(null), 5000);
+  }
+
+  async function bulkDelete() {
+    if (!confirm(`删除选中的 ${selected.size} 条物料? 已被单品/套餐引用的会跳过`)) return;
+    try {
+      const r = await api.bulkDeleteMaterials([...selected]);
+      const msg = `批量删除: 成功 ${r.deleted} 条`
+        + (r.blocked.length > 0 ? ` · 被引用跳过 ${r.blocked.length} 条 (${r.blocked.slice(0,3).map(b=>b.item_code).join(', ')}${r.blocked.length>3?'...':''})` : '');
+      setSyncMsg(msg);
+      clearSelection();
+      load();
+    } catch (e: any) {
+      setSyncMsg('批量删除失败: ' + e.message);
+    }
+    setTimeout(() => setSyncMsg(null), 8000);
+  }
+
   async function onDelete(code: string) {
     if (!confirm(`删除 ${code}? 关联的 BOM 行可能受影响`)) return;
     await api.deleteMaterial(code);
@@ -166,6 +307,9 @@ export default function MaterialsPage() {
           <button className="btn-outline" onClick={onClassify} title="按关键词把 ERP 原材料自动分到 包材 / 酱料">
             <Sparkles size={14} /> 自动分类
           </button>
+          <button className="btn-outline" onClick={onSplitChannel} title="按名字关键词把通用包材/酱料分流到 外卖 / 到店">
+            <Split size={14} /> 分流渠道
+          </button>
           <button className="btn-outline" onClick={onDedupe} title="按 名称+类别 合并重复项,优先保留 ERP 来源">
             <Merge size={14} /> 去重
           </button>
@@ -185,7 +329,7 @@ export default function MaterialsPage() {
       )}
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        {(Object.keys(CAT_LABELS) as Category[]).map((c) => (
+        {(Object.keys(CAT_LABELS) as CategoryTabKey[]).map((c) => (
           <CategoryTab
             key={c}
             active={filter.category === c}
@@ -224,12 +368,59 @@ export default function MaterialsPage() {
         </div>
       </div>
 
+      {selected.size > 0 && (
+        <div className="mb-3 rounded-xl border border-brand-200 bg-brand-50/70 px-4 py-2.5 flex flex-wrap items-center gap-2 shadow-soft">
+          <span className="text-sm font-semibold text-brand-700">已选 {selected.size} 条</span>
+          <span className="text-slate-300">·</span>
+          <select
+            className="input !w-36 !py-1 !text-sm bg-white"
+            value={bulkCat}
+            onChange={(e) => setBulkCat(e.target.value as Category | '')}
+          >
+            <option value="">→ 类别 (不变)</option>
+            <option value="raw">→ 原材料</option>
+            <option value="packaging">→ 包材</option>
+            <option value="sauce">→ 酱料</option>
+            <option value="other">→ 未分类</option>
+          </select>
+          <select
+            className="input !w-36 !py-1 !text-sm bg-white"
+            value={bulkChan}
+            onChange={(e) => setBulkChan(e.target.value as any)}
+          >
+            <option value="">→ 渠道 (不变)</option>
+            <option value="takeout">→ 外卖</option>
+            <option value="dinein">→ 到店</option>
+            <option value="null">→ 通用 (清空)</option>
+          </select>
+          <button className="btn-primary !py-1" onClick={applyBulk}>
+            <Check size={14} /> 应用
+          </button>
+          <button className="btn-danger !py-1" onClick={bulkDelete}>
+            <Trash2 size={14} /> 批量删除
+          </button>
+          <button className="btn-ghost !py-1 ml-auto" onClick={clearSelection}>
+            <X size={14} /> 取消选择
+          </button>
+        </div>
+      )}
+
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
             <tr>
+              <th className="px-4 py-2.5 w-10">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-300"
+                  checked={items.length > 0 && selected.size === items.length}
+                  ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < items.length; }}
+                  onChange={toggleAllVisible}
+                />
+              </th>
               <th className="text-left px-4 py-2.5 font-medium">编码</th>
               <th className="text-left px-4 py-2.5 font-medium">名称</th>
+              <th className="text-left px-4 py-2.5 font-medium">类别</th>
               <th className="text-left px-4 py-2.5 font-medium">单位</th>
               {filter.category !== 'raw' && (
                 <th className="text-left px-4 py-2.5 font-medium">渠道</th>
@@ -239,16 +430,38 @@ export default function MaterialsPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
-              <tr><td colSpan={6} className="p-8 text-center text-slate-400">加载中…</td></tr>
-            )}
-            {!loading && items.length === 0 && (
-              <tr><td colSpan={6} className="p-8 text-center text-slate-400">暂无数据</td></tr>
-            )}
+            {(() => {
+              const numCols = 7 + (filter.category !== 'raw' ? 1 : 0);
+              return <>
+                {loading && (
+                  <tr><td colSpan={numCols} className="p-8 text-center text-slate-400">加载中…</td></tr>
+                )}
+                {!loading && items.length === 0 && (
+                  <tr><td colSpan={numCols} className="p-8 text-center text-slate-400">暂无数据</td></tr>
+                )}
+              </>;
+            })()}
             {items.map((m) => (
-              <tr key={m.item_code} className="border-t border-slate-100 hover:bg-slate-50/60">
+              <tr
+                key={m.item_code}
+                className={
+                  'border-t border-slate-100 hover:bg-slate-50/60 ' +
+                  (selected.has(m.item_code) ? 'bg-brand-50/40' : '')
+                }
+              >
+                <td className="px-4 py-2.5">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-300"
+                    checked={selected.has(m.item_code)}
+                    onChange={() => toggleOne(m.item_code)}
+                  />
+                </td>
                 <td className="px-4 py-2.5 font-mono text-xs text-slate-700">{m.item_code}</td>
                 <td className="px-4 py-2.5 font-medium text-slate-900">{m.item_name}</td>
+                <td className="px-4 py-2.5">
+                  <CategorySelect material={m} onChanged={load} />
+                </td>
                 <td className="px-4 py-2.5 text-slate-500">{m.uom || '—'}</td>
                 {filter.category !== 'raw' && (
                   <td className="px-4 py-2.5"><ChannelChip channel={m.channel} /></td>
@@ -275,7 +488,7 @@ export default function MaterialsPage() {
       {editing && (
         <MaterialEditor
           initial={editing === 'new' ? null : editing}
-          defaultCategory={filter.category}
+          defaultCategory={filter.category === 'all' ? 'raw' : filter.category}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load(); }}
         />
@@ -308,7 +521,7 @@ function MaterialEditor({ initial, defaultCategory, onClose, onSaved }: {
         item_name: name.trim(),
         uom: uom.trim() || null,
         category,
-        channel: category === 'raw' ? null : (channel || null),
+        channel: (category === 'raw' || category === 'other') ? null : (channel || null),
       };
       if (isNew) await api.createMaterial(payload);
       else await api.updateMaterial(initial!.item_code, payload);
@@ -344,6 +557,7 @@ function MaterialEditor({ initial, defaultCategory, onClose, onSaved }: {
                 <option value="raw">原材料</option>
                 <option value="packaging">包材</option>
                 <option value="sauce">酱料</option>
+                <option value="other">未分类</option>
               </select>
             </div>
             <div>
@@ -351,7 +565,7 @@ function MaterialEditor({ initial, defaultCategory, onClose, onSaved }: {
               <input className="input mt-1" value={uom} onChange={(e) => setUom(e.target.value)} />
             </div>
           </div>
-          {category !== 'raw' && (
+          {category !== 'raw' && category !== 'other' && (
             <div>
               <label className="label">渠道</label>
               <div className="flex gap-2 mt-1">

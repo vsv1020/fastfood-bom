@@ -34,6 +34,22 @@ export const api = {
       dry_run: boolean; groups: number; removed: number; refs_migrated: number;
       actions: { name: string; category: string; keep: string; dropped: string[] }[];
     }>(`/api/materials/dedupe${dryRun ? '?dry_run=1' : ''}`, { method: 'POST' }),
+  bulkUpdateMaterials: (item_codes: string[], updates: { category?: Category; channel?: Channel | null }) =>
+    http<{ updated: number; note?: string }>(
+      '/api/materials/bulk-update',
+      { method: 'POST', body: JSON.stringify({ item_codes, ...updates }) }
+    ),
+  bulkDeleteMaterials: (item_codes: string[]) =>
+    http<{ deleted: number; blocked: { item_code: string; reason: string }[] }>(
+      '/api/materials/bulk-delete',
+      { method: 'POST', body: JSON.stringify({ item_codes }) }
+    ),
+  splitChannel: (dryRun = false) =>
+    http<{
+      dry_run: boolean; scanned: number; untouched: number;
+      takeout: { count: number; items: { item_code: string; item_name: string; category: string }[] };
+      dinein:  { count: number; items: { item_code: string; item_name: string; category: string }[] };
+    }>(`/api/materials/split-channel${dryRun ? '?dry_run=1' : ''}`, { method: 'POST' }),
   autoClassify: (dryRun = false) =>
     http<{
       dry_run: boolean; scanned: number;
@@ -67,15 +83,20 @@ export const api = {
   getErpSettings: () => http<{
     url: string; api_key: string; api_secret_set: boolean;
     item_group: string; name_field: string;
+    whitelist: string; whitelist_count: number; whitelist_strict: boolean;
   }>('/api/erp/settings'),
   saveErpSettings: (s: {
     url?: string; api_key?: string; api_secret?: string;
     item_group?: string; name_field?: string;
+    whitelist?: string; whitelist_strict?: boolean;
   }) =>
     http<{ ok: true }>('/api/erp/settings', { method: 'PUT', body: JSON.stringify(s) }),
   syncErp: () => http<{
     count: number; note?: string;
     name_field: string; name_field_requested: string; name_field_used: boolean;
     name_missing: number;
+    whitelist_used: boolean; whitelist_size: number;
+    strict_mode: boolean; strict_purged: number;
+    strict_blocked: { item_code: string; reason: string }[];
   }>('/api/erp/sync', { method: 'POST' }),
 };

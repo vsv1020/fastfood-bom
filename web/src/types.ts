@@ -1,5 +1,5 @@
 export type Channel = 'takeout' | 'dinein';
-export type Category = 'raw' | 'packaging' | 'sauce';
+export type Category = 'raw' | 'packaging' | 'sauce' | 'other';
 
 export interface Material {
   item_code: string;
@@ -43,10 +43,10 @@ export interface Combo {
   code: string;
   name: string;
   description: string | null;
-  packaging_takeout_code: string | null;
-  packaging_dinein_code: string | null;
-  sauce_takeout_code: string | null;
-  sauce_dinein_code: string | null;
+  packaging_takeout_codes: string[];
+  packaging_dinein_codes:  string[];
+  sauce_takeout_codes:     string[];
+  sauce_dinein_codes:      string[];
   created_at: string;
   line_count?: number;
   lines?: ComboLine[];
@@ -59,8 +59,8 @@ export interface BomRow extends Material {
 export interface ComboBom {
   combo_id: number;
   channel: Channel;
-  packaging_code: string | null;
-  sauce_code: string | null;
+  packaging_codes: string[];
+  sauce_codes: string[];
   products: { product_id: number; code: string; name: string; combo_qty: number }[];
   bom: BomRow[];
 }

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  DndContext, type DragEndEvent, useDraggable, useDroppable,
+  DndContext, DragOverlay,
+  type DragEndEvent, type DragStartEvent,
+  useDraggable, useDroppable,
   PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
 import { Plus, Save, Trash2, Search, GripVertical, X } from 'lucide-react';
@@ -11,6 +13,7 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedId, setSelectedId] = useState<number | 'new' | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pendingDrop, setPendingDrop] = useState<{ material: Material; ts: number } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -19,7 +22,22 @@ export default function ProductsPage() {
   }
   useEffect(() => { load(); }, []);
 
+  const [activeMat, setActiveMat] = useState<Material | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  function onDragStart(e: DragStartEvent) {
+    setActiveMat((e.active.data.current?.material as Material | undefined) ?? null);
+  }
+  function onDragEnd(e: DragEndEvent) {
+    setActiveMat(null);
+    if (e.over?.id !== PRODUCT_DROP_ID) return;
+    const m = e.active.data.current?.material as Material | undefined;
+    if (!m) return;
+    setPendingDrop({ material: m, ts: Date.now() });
+  }
+  function onDragCancel() { setActiveMat(null); }
+
   return (
+    <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
     <div className="h-full grid grid-cols-[280px_1fr_320px]">
       {/* 左:单品列表 */}
       <aside className="border-r border-slate-200 bg-white flex flex-col">
@@ -67,6 +85,8 @@ export default function ProductsPage() {
           <ProductEditor
             key={selectedId === 'new' ? 'new' : selectedId}
             productId={selectedId === 'new' ? null : selectedId}
+            pendingDrop={pendingDrop}
+            onConsumed={() => setPendingDrop(null)}
             onSaved={(p) => { setSelectedId(p.id); load(); }}
             onDeleted={() => { setSelectedId(null); load(); }}
           />
@@ -75,8 +95,33 @@ export default function ProductsPage() {
 
       {/* 右:原材料库面板 */}
       <aside className="border-l border-slate-200 bg-white flex flex-col">
-        <MaterialDragPanel category="raw" title="原材料库" hint="拖到中间区域加入 BOM" />
+        <MaterialDragPanel
+          category="raw"
+          title="原材料库"
+          hint="拖到中间区域,或直接点击 +1"
+          onAddItem={(m) => setPendingDrop({ material: m, ts: Date.now() })}
+        />
       </aside>
+    </div>
+    <DragOverlay dropAnimation={null}>
+      {activeMat ? <MaterialDragPreview material={activeMat} /> : null}
+    </DragOverlay>
+    </DndContext>
+  );
+}
+
+function MaterialDragPreview({ material }: { material: Material }) {
+  return (
+    <div
+      className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white shadow-xl border border-brand-300 w-72 cursor-grabbing"
+      style={{ pointerEvents: 'none' }}
+    >
+      <GripVertical size={14} className="text-brand-400" />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-slate-900 truncate">{material.item_name}</div>
+        <div className="font-mono text-[10px] text-slate-500 truncate">{material.item_code}</div>
+      </div>
+      <span className="text-[10px] text-slate-400">{material.uom}</span>
     </div>
   );
 }
@@ -94,9 +139,11 @@ function EmptyState({ text }: { text: string }) {
 const PRODUCT_DROP_ID = 'product-bom-drop';
 
 function ProductEditor({
-  productId, onSaved, onDeleted,
+  productId, pendingDrop, onConsumed, onSaved, onDeleted,
 }: {
   productId: number | null;
+  pendingDrop: { material: Material; ts: number } | null;
+  onConsumed: () => void;
   onSaved: (p: Product) => void;
   onDeleted: () => void;
 }) {
@@ -118,11 +165,10 @@ function ProductEditor({
     });
   }, [productId]);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-  function onDragEnd(e: DragEndEvent) {
-    if (e.over?.id !== PRODUCT_DROP_ID) return;
-    const m = e.active.data.current?.material as Material | undefined;
-    if (!m) return;
+  // Apply a drop signal coming from the page-level DndContext
+  useEffect(() => {
+    if (!pendingDrop) return;
+    const m = pendingDrop.material;
     setLines((prev) => {
       const idx = prev.findIndex((l) => l.material_code === m.item_code);
       if (idx >= 0) {
@@ -135,16 +181,18 @@ function ProductEditor({
         item_name: m.item_name, uom: m.uom, category: m.category,
       }];
     });
-  }
+    onConsumed();
+  }, [pendingDrop]);
 
   async function save() {
     setSaving(true); setErr(null);
     try {
-      const payload = {
-        code: code.trim(), name: name.trim(),
+      const payload: any = {
+        name: name.trim(),
         description: description.trim() || null,
         lines: lines.map((l) => ({ material_code: l.material_code, qty: l.qty })),
       };
+      if (code.trim()) payload.code = code.trim(); // 编辑时保留原 code
       const p = productId == null
         ? await api.createProduct(payload)
         : await api.updateProduct(productId, payload);
@@ -162,21 +210,18 @@ function ProductEditor({
   }
 
   return (
-    <DndContext sensors={sensors} onDragEnd={onDragEnd}>
       <div className="h-full flex flex-col p-8 overflow-y-auto">
         <header className="flex items-start justify-between mb-6">
           <div className="flex-1 max-w-xl space-y-3">
-            <div className="grid grid-cols-[1fr_2fr] gap-3">
-              <div>
-                <label className="label">编码</label>
-                <input className="input mt-1 font-mono" value={code}
-                       onChange={(e) => setCode(e.target.value)} placeholder="如 P-CHEESE" />
-              </div>
-              <div>
-                <label className="label">名称</label>
-                <input className="input mt-1" value={name}
-                       onChange={(e) => setName(e.target.value)} placeholder="如 芝士牛肉堡" />
-              </div>
+            <div>
+              <label className="label flex items-center gap-2">
+                单品名称
+                <span className="font-mono text-[10px] text-slate-400 normal-case tracking-normal">
+                  {code || '(保存后自动分配编码)'}
+                </span>
+              </label>
+              <input className="input mt-1" value={name}
+                     onChange={(e) => setName(e.target.value)} placeholder="如 芝士牛肉堡" />
             </div>
             <div>
               <label className="label">描述 (可选)</label>
@@ -188,7 +233,7 @@ function ProductEditor({
             {productId != null && (
               <button className="btn-danger" onClick={del}><Trash2 size={14} /> 删除</button>
             )}
-            <button className="btn-primary" onClick={save} disabled={saving || !code || !name}>
+            <button className="btn-primary" onClick={save} disabled={saving || !name}>
               <Save size={14} /> 保存
             </button>
           </div>
@@ -206,7 +251,6 @@ function ProductEditor({
           数量、删除可在每行直接编辑。
         </p>
       </div>
-    </DndContext>
   );
 }
 
@@ -281,12 +325,13 @@ function ProductBomDropZone({
 /* ---------------- Reusable material drag panel ---------------- */
 
 export function MaterialDragPanel({
-  category, title, hint, channel,
+  category, title, hint, channel, onAddItem,
 }: {
   category: 'raw' | 'packaging' | 'sauce';
   title: string;
   hint: string;
   channel?: 'takeout' | 'dinein';
+  onAddItem?: (m: Material) => void;
 }) {
   const [items, setItems] = useState<Material[]>([]);
   const [q, setQ] = useState('');
@@ -310,31 +355,34 @@ export function MaterialDragPanel({
         {items.length === 0 && (
           <div className="text-center text-sm text-slate-400 py-8">空</div>
         )}
-        {items.map((m) => <DraggableMaterial key={m.item_code} material={m} />)}
+        {items.map((m) => (
+          <DraggableMaterial
+            key={m.item_code} material={m}
+            onAdd={onAddItem ? () => onAddItem(m) : undefined}
+          />
+        ))}
       </div>
     </>
   );
 }
 
-function DraggableMaterial({ material }: { material: Material }) {
+function DraggableMaterial({ material, onAdd }: { material: Material; onAdd?: () => void }) {
   const id = `mat-${material.item_code}`;
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id, data: { material },
   });
-  const style: React.CSSProperties = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 50 }
-    : {};
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{ opacity: isDragging ? 0.4 : 1 }}
       {...listeners}
       {...attributes}
+      onClick={onAdd}
       className={
-        'group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-grab active:cursor-grabbing ' +
-        'hover:bg-brand-50 hover:shadow-sm border border-transparent hover:border-brand-200 transition ' +
-        (isDragging ? 'bg-white shadow-lg border-brand-300' : '')
+        'group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer active:cursor-grabbing ' +
+        'hover:bg-brand-50 hover:shadow-sm border border-transparent hover:border-brand-200 transition'
       }
+      title={onAdd ? '点击或拖到中间区域加入 BOM' : undefined}
     >
       <GripVertical size={14} className="text-slate-300 group-hover:text-brand-400" />
       <div className="min-w-0 flex-1">

@@ -3,27 +3,45 @@ import { db, getSetting, setSetting } from '../db.js';
 
 export const erpRouter = Router();
 
+// 把白名单文本(可换行/逗号/空格混合,支持 # 注释)解析成 unique code 数组
+function parseWhitelist(text) {
+  if (!text) return [];
+  const set = new Set();
+  for (const raw of text.split(/[\s,;]+/)) {
+    const s = raw.trim();
+    if (!s || s.startsWith('#')) continue;
+    set.add(s);
+  }
+  return [...set];
+}
+
 // GET current ERP settings (mask the secret)
 erpRouter.get('/settings', (req, res) => {
   const url = getSetting('erp_url') || 'https://erp-victor.ttpos.dev';
   const apiKey = getSetting('erp_api_key') || '';
   const apiSecret = getSetting('erp_api_secret') || '';
+  const whitelistText = getSetting('erp_whitelist') || '';
   res.json({
     url,
     api_key: apiKey,
     api_secret_set: Boolean(apiSecret),
     item_group: getSetting('erp_item_group') || 'Raw Material',
     name_field: getSetting('erp_name_field') || 'custom_item_name_zh',
+    whitelist: whitelistText,
+    whitelist_count: parseWhitelist(whitelistText).length,
+    whitelist_strict: getSetting('erp_whitelist_strict') === '1',
   });
 });
 
 erpRouter.put('/settings', (req, res) => {
-  const { url, api_key, api_secret, item_group, name_field } = req.body || {};
+  const { url, api_key, api_secret, item_group, name_field, whitelist, whitelist_strict } = req.body || {};
   if (url !== undefined) setSetting('erp_url', url);
   if (api_key !== undefined) setSetting('erp_api_key', api_key);
   if (api_secret !== undefined && api_secret !== '') setSetting('erp_api_secret', api_secret);
   if (item_group !== undefined) setSetting('erp_item_group', item_group);
   if (name_field !== undefined) setSetting('erp_name_field', name_field);
+  if (whitelist !== undefined) setSetting('erp_whitelist', whitelist);
+  if (whitelist_strict !== undefined) setSetting('erp_whitelist_strict', whitelist_strict ? '1' : '0');
   res.json({ ok: true });
 });
 
@@ -39,10 +57,14 @@ erpRouter.post('/sync', async (req, res) => {
   }
 
   const nameField = (getSetting('erp_name_field') || 'custom_item_name_zh').trim();
-  const filters = JSON.stringify([
+  const whitelist = parseWhitelist(getSetting('erp_whitelist') || '');
+  const strict = getSetting('erp_whitelist_strict') === '1';
+  const filterClauses = [
     ['item_group', '=', itemGroup],
     ['disabled', '=', 0],
-  ]);
+  ];
+  if (whitelist.length > 0) filterClauses.push(['item_code', 'in', whitelist]);
+  const filters = JSON.stringify(filterClauses);
   const baseFields = ['item_code', 'item_name', 'stock_uom', 'item_group'];
   const wantsCustomName = nameField && !baseFields.includes(nameField);
 
@@ -115,12 +137,33 @@ erpRouter.post('/sync', async (req, res) => {
     }
   });
   tx();
+
+  // 严格白名单模式:同步成功后,删除 source='erp' 且 item_code 不在白名单内的物料。
+  // 被 BOM 引用的物料 FK 会阻止删除,跳过并报告。
+  let strictPurged = 0;
+  const strictBlocked = [];
+  if (strict && whitelist.length > 0) {
+    const wlSet = new Set(whitelist);
+    const erpRows = db.prepare(`SELECT item_code FROM materials WHERE source='erp'`).all();
+    const toRemove = erpRows.map((r) => r.item_code).filter((c) => !wlSet.has(c));
+    const del = db.prepare(`DELETE FROM materials WHERE item_code = ?`);
+    for (const code of toRemove) {
+      try { if (del.run(code).changes) strictPurged++; }
+      catch (e) { strictBlocked.push({ item_code: code, reason: e.message }); }
+    }
+  }
+
   res.json({
     count: n,
     name_field: usedNameField ? nameField : 'item_name',
     name_field_requested: nameField,
     name_field_used: usedNameField,
     name_missing: nameMissing,
+    whitelist_used: whitelist.length > 0,
+    whitelist_size: whitelist.length,
+    strict_mode: strict,
+    strict_purged: strictPurged,
+    strict_blocked: strictBlocked,
     note: usedNameField
       ? undefined
       : (wantsCustomName ? `ERP 没有字段 \`${nameField}\`,本次同步退回 item_name` : undefined),
