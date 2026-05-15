@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, RefreshCw, Search, Trash2, Pencil, X, Check, Merge, Sparkles, Split } from 'lucide-react';
+import { Plus, RefreshCw, Search, Trash2, Pencil, X, Check, Merge, Sparkles, Split, Download } from 'lucide-react';
 import { api } from '../api';
 import type { Material, Category, Channel } from '../types';
 
@@ -304,6 +304,9 @@ export default function MaterialsPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <a className="btn-outline" href="/api/export/materials.csv" download title="导出当前物料库为 CSV">
+            <Download size={14} /> 导出
+          </a>
           <button className="btn-outline" onClick={onClassify} title="按关键词把 ERP 原材料自动分到 包材 / 酱料">
             <Sparkles size={14} /> 自动分类
           </button>

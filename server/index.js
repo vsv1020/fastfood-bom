@@ -7,6 +7,7 @@ import { productsRouter } from './routes/products.js';
 import { combosRouter } from './routes/combos.js';
 import { ordersRouter } from './routes/orders.js';
 import { sharedBomsRouter } from './routes/sharedBoms.js';
+import { exportRouter } from './routes/export.js';
 import { erpRouter } from './routes/erp.js';
 
 seedIfEmpty();
@@ -25,6 +26,7 @@ app.use('/api/products', productsRouter);
 app.use('/api/combos', combosRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/shared-boms', sharedBomsRouter);
+app.use('/api/export', exportRouter);
 app.use('/api/erp', erpRouter);
 
 const PORT = Number(process.env.PORT || 3001);

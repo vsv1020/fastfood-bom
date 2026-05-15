@@ -5,7 +5,7 @@ import {
   useDraggable, useDroppable,
   PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
-import { Plus, Save, Trash2, Search, GripVertical, X, Shuffle } from 'lucide-react';
+import { Plus, Save, Trash2, Search, GripVertical, X, Shuffle, Download } from 'lucide-react';
 import { api } from '../api';
 import type { Material, Product, ProductLine, ProductLineSubstitute } from '../types';
 
@@ -95,7 +95,10 @@ export default function ProductsPage() {
                 <div className="text-sm font-semibold text-slate-900">BOM 单元</div>
                 <div className="text-[11px] text-slate-500">{products.length} 个</div>
               </div>
-              <button className="btn-primary !py-1 !px-2 ml-auto" onClick={() => setSelectedId('new')}>
+              <a className="btn-ghost !py-1 !px-2 ml-auto" href="/api/export/products.csv" download title="导出 BOM 单元为 CSV">
+                <Download size={14} />
+              </a>
+              <button className="btn-primary !py-1 !px-2" onClick={() => setSelectedId('new')}>
                 <Plus size={14} /> 新建
               </button>
             </>

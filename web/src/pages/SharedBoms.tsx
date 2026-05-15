@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Save, Truck, Store, Layers, Share2, X, Shuffle, Power } from 'lucide-react';
+import { Save, Truck, Store, Layers, Share2, X, Shuffle, Power, Download } from 'lucide-react';
 import { api } from '../api';
 import type { SharedBomGroup, SharedBomLine, SharedBomLineSubstitute, Material, Channel } from '../types';
 
@@ -25,13 +25,18 @@ export default function SharedBomsPage() {
 
   return (
     <div className="h-full flex flex-col">
-      <header className="px-8 pt-8 pb-4">
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
-          <Share2 size={20} className="text-brand-500" /> 订单级共享 BOM
-        </h1>
-        <p className="text-sm text-slate-500 mt-1">
-          每组按单品 BOM 配置方式 (主物料 + 替换品 + 优先级)。订单匹配渠道时,组内全部物料并入汇总 BOM。
-        </p>
+      <header className="px-8 pt-8 pb-4 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
+            <Share2 size={20} className="text-brand-500" /> 订单级共享 BOM
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            每组按单品 BOM 配置方式 (主物料 + 替换品 + 优先级)。订单匹配渠道时,组内全部物料并入汇总 BOM。
+          </p>
+        </div>
+        <a className="btn-outline" href="/api/export/shared-boms.csv" download title="导出共享 BOM 配置为 CSV">
+          <Download size={14} /> 导出
+        </a>
       </header>
 
       {msg && (

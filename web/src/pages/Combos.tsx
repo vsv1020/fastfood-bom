@@ -7,7 +7,7 @@ import {
 } from '@dnd-kit/core';
 import {
   Plus, Save, Trash2, Search, GripVertical, X, Truck, Store,
-  Package, Droplet, Sigma, ChevronDown, Shuffle,
+  Package, Droplet, Sigma, ChevronDown, Shuffle, Download,
 } from 'lucide-react';
 import { api } from '../api';
 import type { Combo, ComboLine, ComboLineSubstitute, Product, Material, ComboBom, Channel, PackEntry } from '../types';
@@ -94,7 +94,10 @@ export default function CombosPage() {
                 <div className="text-sm font-semibold text-slate-900">BOM 组合</div>
                 <div className="text-[11px] text-slate-500">{combos.length} 个</div>
               </div>
-              <button className="btn-primary !py-1 !px-2 ml-auto" onClick={() => setSelectedId('new')}>
+              <a className="btn-ghost !py-1 !px-2 ml-auto" href="/api/export/combos.csv" download title="导出 BOM 组合为 CSV">
+                <Download size={14} />
+              </a>
+              <button className="btn-primary !py-1 !px-2" onClick={() => setSelectedId('new')}>
                 <Plus size={14} /> 新建
               </button>
             </>
