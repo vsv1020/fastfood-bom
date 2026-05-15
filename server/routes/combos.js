@@ -13,14 +13,28 @@ function nextComboCode() {
   return `C-${String(next).padStart(4, '0')}`;
 }
 
-function parseCodes(text, fallbackSingle) {
+// 把 JSON 字符串解析为 {code, qty} 数组,兼容旧的 ["code1","code2"] 字符串数组(qty 默认 1)
+function parseEntries(text, fallbackSingle) {
   if (text) {
     try {
       const arr = JSON.parse(text);
-      if (Array.isArray(arr)) return arr.filter(Boolean);
+      if (Array.isArray(arr)) {
+        return arr
+          .map((it) => {
+            if (!it) return null;
+            if (typeof it === 'string') return { code: it, qty: 1 };
+            if (typeof it === 'object' && it.code) return { code: String(it.code), qty: Number(it.qty) || 1 };
+            return null;
+          })
+          .filter(Boolean);
+      }
     } catch {}
   }
-  return fallbackSingle ? [fallbackSingle] : [];
+  return fallbackSingle ? [{ code: fallbackSingle, qty: 1 }] : [];
+}
+// 旧 callers 兼容:返回纯 codes
+function parseCodes(text, fallbackSingle) {
+  return parseEntries(text, fallbackSingle).map((e) => e.code);
 }
 
 function loadCombo(id) {
@@ -44,11 +58,11 @@ function loadCombo(id) {
     ORDER BY s.priority, s.id
   `);
   for (const ln of c.lines) ln.substitutes = subStmt.all(ln.id);
-  // 把 JSON-array TEXT 解码成数组 (保留旧 *_code 单值为兼容)
-  c.packaging_takeout_codes = parseCodes(c.packaging_takeout_codes, c.packaging_takeout_code);
-  c.packaging_dinein_codes  = parseCodes(c.packaging_dinein_codes,  c.packaging_dinein_code);
-  c.sauce_takeout_codes     = parseCodes(c.sauce_takeout_codes,     c.sauce_takeout_code);
-  c.sauce_dinein_codes      = parseCodes(c.sauce_dinein_codes,      c.sauce_dinein_code);
+  // 字段升级为 {code, qty}[] (兼容旧 ["code"] 数组与旧单值字段)
+  c.packaging_takeout_codes = parseEntries(c.packaging_takeout_codes, c.packaging_takeout_code);
+  c.packaging_dinein_codes  = parseEntries(c.packaging_dinein_codes,  c.packaging_dinein_code);
+  c.sauce_takeout_codes     = parseEntries(c.sauce_takeout_codes,     c.sauce_takeout_code);
+  c.sauce_dinein_codes      = parseEntries(c.sauce_dinein_codes,      c.sauce_dinein_code);
   return c;
 }
 
@@ -67,12 +81,23 @@ combosRouter.get('/:id', (req, res) => {
   res.json(c);
 });
 
-// 接收数组或单值,标准化成 unique 数组,JSON.stringify 后落库
-function normalizeCodes(arr, singleField) {
-  if (Array.isArray(arr)) return [...new Set(arr.filter(Boolean).map(String))];
-  if (typeof arr === 'string' && arr) return [arr];
-  if (singleField) return [singleField];
-  return [];
+// 接收 {code,qty}[] 或 string[] 或单值,标准化成 unique {code,qty}[],JSON.stringify 后落库
+function normalizeEntries(arr, singleField) {
+  let raw;
+  if (Array.isArray(arr)) raw = arr;
+  else if (typeof arr === 'string' && arr) raw = [arr];
+  else if (singleField) raw = [singleField];
+  else return [];
+  const map = new Map();
+  for (const it of raw) {
+    if (!it) continue;
+    let code, qty;
+    if (typeof it === 'string') { code = it; qty = 1; }
+    else if (typeof it === 'object' && it.code) { code = String(it.code); qty = Number(it.qty) || 1; }
+    else continue;
+    map.set(code, qty); // 同 code 后写覆盖前(避免重复)
+  }
+  return [...map.entries()].map(([code, qty]) => ({ code, qty }));
 }
 
 combosRouter.post('/', (req, res) => {
@@ -86,10 +111,10 @@ combosRouter.post('/', (req, res) => {
   } = req.body || {};
   if (!name) return res.status(400).json({ error: 'name required' });
   const finalCode = (code && code.trim()) ? code.trim() : nextComboCode();
-  const pkgTo = normalizeCodes(packaging_takeout_codes, packaging_takeout_code);
-  const pkgDi = normalizeCodes(packaging_dinein_codes,  packaging_dinein_code);
-  const sauTo = normalizeCodes(sauce_takeout_codes,     sauce_takeout_code);
-  const sauDi = normalizeCodes(sauce_dinein_codes,      sauce_dinein_code);
+  const pkgTo = normalizeEntries(packaging_takeout_codes, packaging_takeout_code);
+  const pkgDi = normalizeEntries(packaging_dinein_codes,  packaging_dinein_code);
+  const sauTo = normalizeEntries(sauce_takeout_codes,     sauce_takeout_code);
+  const sauDi = normalizeEntries(sauce_dinein_codes,      sauce_dinein_code);
   try {
     const tx = db.transaction(() => {
       const info = db.prepare(`
@@ -131,10 +156,10 @@ combosRouter.put('/:id', (req, res) => {
     packaging_takeout_code, packaging_dinein_code,
     sauce_takeout_code, sauce_dinein_code,
   } = req.body || {};
-  const pkgTo = normalizeCodes(packaging_takeout_codes, packaging_takeout_code);
-  const pkgDi = normalizeCodes(packaging_dinein_codes,  packaging_dinein_code);
-  const sauTo = normalizeCodes(sauce_takeout_codes,     sauce_takeout_code);
-  const sauDi = normalizeCodes(sauce_dinein_codes,      sauce_dinein_code);
+  const pkgTo = normalizeEntries(packaging_takeout_codes, packaging_takeout_code);
+  const pkgDi = normalizeEntries(packaging_dinein_codes,  packaging_dinein_code);
+  const sauTo = normalizeEntries(sauce_takeout_codes,     sauce_takeout_code);
+  const sauDi = normalizeEntries(sauce_dinein_codes,      sauce_dinein_code);
   try {
     const tx = db.transaction(() => {
       db.prepare(`UPDATE combos SET
@@ -231,17 +256,17 @@ combosRouter.get('/:id/bom', (req, res) => {
     }
   }
 
-  // 包材 / 酱料 (priority=0 视为主选)
-  const pkgCodes = parseCodes(
+  // 包材 / 酱料 (priority=0 视为主选,数量取每条 entry.qty)
+  const pkgEntries = parseEntries(
     channel === 'takeout' ? combo.packaging_takeout_codes : combo.packaging_dinein_codes,
     channel === 'takeout' ? combo.packaging_takeout_code  : combo.packaging_dinein_code,
   );
-  const sauceCodes = parseCodes(
+  const sauceEntries = parseEntries(
     channel === 'takeout' ? combo.sauce_takeout_codes : combo.sauce_dinein_codes,
     channel === 'takeout' ? combo.sauce_takeout_code  : combo.sauce_dinein_code,
   );
-  for (const c of pkgCodes)   add(c, 1, 0);
-  for (const c of sauceCodes) add(c, 1, 0);
+  for (const e of pkgEntries)   add(e.code, e.qty, 0);
+  for (const e of sauceEntries) add(e.code, e.qty, 0);
 
   // Enrich with material meta
   const allCodes = [...new Set([...bom.values()].map((b) => b.item_code))];
@@ -265,8 +290,10 @@ combosRouter.get('/:id/bom', (req, res) => {
   res.json({
     combo_id: id,
     channel,
-    packaging_codes: pkgCodes,
-    sauce_codes: sauceCodes,
+    packaging_codes: pkgEntries.map((e) => e.code),  // 兼容字段
+    sauce_codes:     sauceEntries.map((e) => e.code),
+    packaging_entries: pkgEntries,
+    sauce_entries:     sauceEntries,
     products: lines,
     bom: result,
   });

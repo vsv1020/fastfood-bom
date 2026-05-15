@@ -1,5 +1,6 @@
 import type {
-  Material, Product, Combo, ComboBom, Channel, Category,
+  Material, Product, Combo, ComboBom, Channel, Category, BomRow,
+  SharedBomGroup, SharedBomLine,
 } from './types';
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
@@ -91,6 +92,20 @@ export const api = {
     whitelist?: string; whitelist_strict?: boolean;
   }) =>
     http<{ ok: true }>('/api/erp/settings', { method: 'PUT', body: JSON.stringify(s) }),
+  // ----- 订单维度 BOM -----
+  orderPreview: (items: { kind: 'product' | 'combo'; id: number; qty: number; channel?: Channel }[]) =>
+    http<{
+      items: { kind: string; id: number; code?: string; name?: string; qty: number; channel?: Channel; missing?: boolean }[];
+      bom: BomRow[];
+      total_lines: number;
+      shared_hits: { id: number; name: string; material_code: string; qty: number; channel: Channel | null }[];
+    }>('/api/orders/preview', { method: 'POST', body: JSON.stringify({ items }) }),
+
+  // ----- 订单级共享 BOM 组 (固定: 外卖共有 / 到店共有 / 通用共有) -----
+  listSharedBomGroups: () => http<SharedBomGroup[]>('/api/shared-boms'),
+  updateSharedBomGroup: (id: number, s: { name?: string; enabled?: boolean; lines?: SharedBomLine[] }) =>
+    http<SharedBomGroup>(`/api/shared-boms/${id}`, { method: 'PUT', body: JSON.stringify(s) }),
+
   syncErp: () => http<{
     count: number; note?: string;
     name_field: string; name_field_requested: string; name_field_used: boolean;

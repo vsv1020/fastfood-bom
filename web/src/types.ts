@@ -59,15 +59,17 @@ export interface ComboLine {
   substitutes?: ComboLineSubstitute[];
 }
 
+export interface PackEntry { code: string; qty: number; }
+
 export interface Combo {
   id: number;
   code: string;
   name: string;
   description: string | null;
-  packaging_takeout_codes: string[];
-  packaging_dinein_codes:  string[];
-  sauce_takeout_codes:     string[];
-  sauce_dinein_codes:      string[];
+  packaging_takeout_codes: PackEntry[];
+  packaging_dinein_codes:  PackEntry[];
+  sauce_takeout_codes:     PackEntry[];
+  sauce_dinein_codes:      PackEntry[];
   created_at: string;
   line_count?: number;
   lines?: ComboLine[];
@@ -76,13 +78,46 @@ export interface Combo {
 export interface BomRow extends Material {
   qty: number;
   priority: number;  // 0=主物料,>=1=替换品
+  is_shared?: boolean;  // 命中订单级共享 BOM
+}
+
+export interface SharedBomLineSubstitute {
+  id?: number;
+  material_code: string;
+  qty: number;
+  priority: number;
+  item_name?: string;
+  uom?: string | null;
+  category?: Category;
+}
+
+export interface SharedBomLine {
+  id?: number;
+  material_code: string;
+  qty: number;
+  item_name?: string;
+  uom?: string | null;
+  category?: Category;
+  substitutes?: SharedBomLineSubstitute[];
+}
+
+export interface SharedBomGroup {
+  id: number;
+  code: string;            // 'takeout' | 'dinein' | 'all'
+  name: string;
+  channel: Channel | null;
+  enabled: number;
+  created_at: string;
+  lines: SharedBomLine[];
 }
 
 export interface ComboBom {
   combo_id: number;
   channel: Channel;
-  packaging_codes: string[];
+  packaging_codes: string[];   // 兼容字段
   sauce_codes: string[];
+  packaging_entries: PackEntry[];
+  sauce_entries:     PackEntry[];
   products: { product_id: number; code: string; name: string; combo_qty: number }[];
   bom: BomRow[];
 }

@@ -10,7 +10,7 @@ import {
   Package, Droplet, Sigma, ChevronDown, Shuffle,
 } from 'lucide-react';
 import { api } from '../api';
-import type { Combo, ComboLine, ComboLineSubstitute, Product, Material, ComboBom, Channel } from '../types';
+import type { Combo, ComboLine, ComboLineSubstitute, Product, Material, ComboBom, Channel, PackEntry } from '../types';
 
 export default function CombosPage() {
   const [combos, setCombos] = useState<Combo[]>([]);
@@ -134,10 +134,10 @@ function ComboEditor({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [lines, setLines] = useState<ComboLine[]>([]);
-  const [pkgTo, setPkgTo] = useState<string[]>([]);
-  const [pkgDi, setPkgDi] = useState<string[]>([]);
-  const [sauceTo, setSauceTo] = useState<string[]>([]);
-  const [sauceDi, setSauceDi] = useState<string[]>([]);
+  const [pkgTo, setPkgTo] = useState<PackEntry[]>([]);
+  const [pkgDi, setPkgDi] = useState<PackEntry[]>([]);
+  const [sauceTo, setSauceTo] = useState<PackEntry[]>([]);
+  const [sauceDi, setSauceDi] = useState<PackEntry[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -306,8 +306,8 @@ function ChannelGroup({
   icon: React.ReactNode;
   title: string;
   colorClass: string;
-  packaging: { value: string[]; options: Material[]; onChange: (v: string[]) => void };
-  sauce:     { value: string[]; options: Material[]; onChange: (v: string[]) => void };
+  packaging: { value: PackEntry[]; options: Material[]; onChange: (v: PackEntry[]) => void };
+  sauce:     { value: PackEntry[]; options: Material[]; onChange: (v: PackEntry[]) => void };
 }) {
   return (
     <div className={'card p-4 border ' + colorClass}>
@@ -333,30 +333,44 @@ function MaterialMultiPicker({
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string[];
+  value: PackEntry[];
   options: Material[];
-  onChange: (v: string[]) => void;
+  onChange: (v: PackEntry[]) => void;
 }) {
   const byCode = new Map(options.map((o) => [o.item_code, o]));
-  const remaining = options.filter((o) => !value.includes(o.item_code));
+  const remaining = options.filter((o) => !value.some((e) => e.code === o.item_code));
   return (
     <div>
       <span className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-slate-500 mb-1">
         {icon} {label}{value.length > 0 && <span className="text-slate-400 normal-case">· 已选 {value.length}</span>}
       </span>
       <div className="rounded-lg border border-slate-200 bg-white p-1.5 flex flex-wrap gap-1.5 min-h-[36px]">
-        {value.map((code) => {
-          const m = byCode.get(code);
-          const name = m ? m.item_name.split('|')[0].trim() : code;
+        {value.map((entry, idx) => {
+          const m = byCode.get(entry.code);
+          const name = m ? m.item_name.split('|')[0].trim() : entry.code;
           const tagClass = m?.channel === 'takeout' ? 'chip-pkg-to'
                           : m?.channel === 'dinein' ? 'chip-pkg-di'
                           : 'chip bg-slate-100 text-slate-600';
           return (
-            <span key={code} className={tagClass + ' pr-1 pl-2 max-w-full'}>
+            <span key={entry.code} className={tagClass + ' pr-1 pl-2 max-w-full inline-flex items-center gap-1'}>
               <span className="truncate">{name}</span>
+              <span className="text-slate-300 mx-0.5">×</span>
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                className="w-12 text-xs bg-white/70 border border-white/0 rounded px-1 py-0 text-right tabular-nums focus:outline-none focus:border-brand-300 focus:ring-1 focus:ring-brand-200"
+                value={entry.qty}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  const next = [...value];
+                  next[idx] = { ...entry, qty: isNaN(v) ? 0 : v };
+                  onChange(next);
+                }}
+              />
               <button
-                onClick={() => onChange(value.filter((c) => c !== code))}
-                className="ml-1 -mr-0.5 rounded hover:bg-black/10 p-0.5"
+                onClick={() => onChange(value.filter((_, i) => i !== idx))}
+                className="ml-0.5 rounded hover:bg-black/10 p-0.5"
                 title="移除"
               >
                 <X size={11} />
@@ -370,7 +384,7 @@ function MaterialMultiPicker({
             value=""
             onChange={(e) => {
               const v = e.target.value;
-              if (v) onChange([...value, v]);
+              if (v) onChange([...value, { code: v, qty: 1 }]);
               e.target.value = '';
             }}
           >

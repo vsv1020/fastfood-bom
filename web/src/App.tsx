@@ -1,16 +1,20 @@
 import { useState } from 'react';
-import { Boxes, Sandwich, PackageOpen, Settings as SettingsIcon, type LucideIcon } from 'lucide-react';
+import { Boxes, Sandwich, PackageOpen, ShoppingCart, Share2, Settings as SettingsIcon, type LucideIcon } from 'lucide-react';
 import MaterialsPage from './pages/Materials';
 import ProductsPage from './pages/Products';
 import CombosPage from './pages/Combos';
+import OrdersPage from './pages/Orders';
+import SharedBomsPage from './pages/SharedBoms';
 import SettingsPage from './pages/Settings';
 
-type Tab = 'materials' | 'products' | 'combos' | 'settings';
+type Tab = 'materials' | 'products' | 'combos' | 'orders' | 'shared' | 'settings';
 
 const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: 'materials', label: '物料库',   icon: Boxes },
-  { id: 'products',  label: '单品 BOM', icon: Sandwich },
-  { id: 'combos',    label: '套餐组合', icon: PackageOpen },
+  { id: 'products',  label: 'BOM 单元', icon: Sandwich },
+  { id: 'combos',    label: 'BOM 组合', icon: PackageOpen },
+  { id: 'shared',    label: '共享物料', icon: Share2 },
+  { id: 'orders',    label: '订单 BOM', icon: ShoppingCart },
   { id: 'settings',  label: '设置',     icon: SettingsIcon },
 ];
 
@@ -55,6 +59,8 @@ export default function App() {
         {tab === 'materials' && <MaterialsPage />}
         {tab === 'products'  && <ProductsPage />}
         {tab === 'combos'    && <CombosPage />}
+        {tab === 'shared'    && <SharedBomsPage />}
+        {tab === 'orders'    && <OrdersPage />}
         {tab === 'settings'  && <SettingsPage />}
       </main>
     </div>
