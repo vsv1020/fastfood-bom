@@ -16,11 +16,34 @@ export default function CombosPage() {
   const [combos, setCombos] = useState<Combo[]>([]);
   const [selectedId, setSelectedId] = useState<number | 'new' | null>(null);
   const [pendingDrop, setPendingDrop] = useState<{ product: Product; ts: number } | null>(null);
+  const [checked, setChecked] = useState<Set<number>>(new Set());
 
   async function load() {
     setCombos(await api.listCombos());
   }
   useEffect(() => { load(); }, []);
+
+  function toggleCheck(id: number) {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  function clearChecks() { setChecked(new Set()); }
+  async function bulkDelete() {
+    if (checked.size === 0) return;
+    if (!confirm(`删除选中的 ${checked.size} 个 BOM 组合?`)) return;
+    const ids = [...checked];
+    const failed: number[] = [];
+    for (const id of ids) {
+      try { await api.deleteCombo(id); } catch { failed.push(id); }
+    }
+    if (selectedId !== 'new' && selectedId != null && checked.has(selectedId)) setSelectedId(null);
+    clearChecks();
+    load();
+    if (failed.length) alert(`${failed.length} 条删除失败: ${failed.join(', ')}`);
+  }
 
   const [activeProd, setActiveProd] = useState<Product | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
@@ -40,36 +63,74 @@ export default function CombosPage() {
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
     <div className="h-full grid grid-cols-[280px_1fr_320px]">
       <aside className="border-r border-slate-200 bg-white flex flex-col">
-        <header className="p-4 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <div className="text-sm font-semibold text-slate-900">套餐</div>
-            <div className="text-[11px] text-slate-500">{combos.length} 个套餐</div>
-          </div>
-          <button className="btn-primary !py-1 !px-2" onClick={() => setSelectedId('new')}>
-            <Plus size={14} /> 新建
-          </button>
+        <header className={
+          'p-3 border-b flex items-center gap-2 ' +
+          (checked.size > 0 ? 'border-brand-100 bg-brand-50/70' : 'border-slate-100')
+        }>
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-300 ml-1"
+            checked={combos.length > 0 && checked.size === combos.length}
+            ref={(el) => { if (el) el.indeterminate = checked.size > 0 && checked.size < combos.length; }}
+            onChange={() => {
+              if (checked.size === combos.length) clearChecks();
+              else setChecked(new Set(combos.map((c) => c.id)));
+            }}
+            title={checked.size === combos.length ? '取消全选' : '全选'}
+          />
+          {checked.size > 0 ? (
+            <>
+              <span className="text-sm font-semibold text-brand-700">已选 {checked.size}</span>
+              <button className="btn-danger !py-1 !px-2 ml-auto" onClick={bulkDelete} title="批量删除">
+                <Trash2 size={14} /> 删除
+              </button>
+              <button className="btn-ghost !py-1 !px-1.5" onClick={clearChecks} title="取消选择">
+                <X size={14} />
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="ml-1">
+                <div className="text-sm font-semibold text-slate-900">BOM 组合</div>
+                <div className="text-[11px] text-slate-500">{combos.length} 个</div>
+              </div>
+              <button className="btn-primary !py-1 !px-2 ml-auto" onClick={() => setSelectedId('new')}>
+                <Plus size={14} /> 新建
+              </button>
+            </>
+          )}
         </header>
         <div className="flex-1 overflow-y-auto">
           {combos.length === 0 && (
             <div className="p-6 text-center text-sm text-slate-400">
-              还没有套餐<br /><span className="text-xs">点击"新建"开始</span>
+              还没有 BOM 组合<br /><span className="text-xs">点击"新建"开始</span>
             </div>
           )}
           {combos.map((c) => (
-            <button
+            <div
               key={c.id}
-              onClick={() => setSelectedId(c.id)}
               className={
-                'w-full text-left px-4 py-3 border-b border-slate-100 hover:bg-slate-50 ' +
+                'group flex items-center gap-2 px-4 py-3 border-b border-slate-100 hover:bg-slate-50 cursor-pointer ' +
+                (checked.has(c.id) ? 'bg-brand-50/40 ' : '') +
                 (selectedId === c.id ? 'bg-brand-50/60 border-l-2 border-l-brand-500' : '')
               }
+              onClick={() => setSelectedId(c.id)}
             >
-              <div className="text-sm font-medium text-slate-900">{c.name}</div>
-              <div className="flex items-center justify-between mt-0.5">
-                <span className="text-[11px] font-mono text-slate-500">{c.code}</span>
-                <span className="text-[11px] text-slate-400">{c.line_count} 单品</span>
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-300 shrink-0"
+                checked={checked.has(c.id)}
+                onClick={(e) => e.stopPropagation()}
+                onChange={() => toggleCheck(c.id)}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-slate-900 truncate">{c.name}</div>
+                <div className="flex items-center justify-between mt-0.5">
+                  <span className="text-[11px] font-mono text-slate-500">{c.code}</span>
+                  <span className="text-[11px] text-slate-400">{c.line_count} 单品</span>
+                </div>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       </aside>
