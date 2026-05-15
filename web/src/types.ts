@@ -11,6 +11,16 @@ export interface Material {
   updated_at: string;
 }
 
+export interface ProductLineSubstitute {
+  id?: number;
+  material_code: string;
+  qty: number;
+  priority: number;
+  item_name?: string;
+  uom?: string | null;
+  category?: Category;
+}
+
 export interface ProductLine {
   id?: number;
   material_code: string;
@@ -18,6 +28,7 @@ export interface ProductLine {
   item_name?: string;
   uom?: string | null;
   category?: Category;
+  substitutes?: ProductLineSubstitute[];
 }
 
 export interface Product {
@@ -30,12 +41,22 @@ export interface Product {
   lines?: ProductLine[];
 }
 
+export interface ComboLineSubstitute {
+  id?: number;
+  product_id: number;
+  qty: number;
+  priority: number;
+  product_code?: string;
+  product_name?: string;
+}
+
 export interface ComboLine {
   id?: number;
   product_id: number;
   qty: number;
   product_code?: string;
   product_name?: string;
+  substitutes?: ComboLineSubstitute[];
 }
 
 export interface Combo {
@@ -54,6 +75,7 @@ export interface Combo {
 
 export interface BomRow extends Material {
   qty: number;
+  priority: number;  // 0=主物料,>=1=替换品
 }
 
 export interface ComboBom {

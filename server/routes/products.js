@@ -24,6 +24,16 @@ function loadProduct(id) {
     WHERE pl.product_id = ?
     ORDER BY pl.id
   `).all(id);
+  // 每条 line 挂上替换品
+  const subStmt = db.prepare(`
+    SELECT s.id, s.material_code, s.qty, s.priority,
+           m.item_name, m.uom, m.category
+    FROM product_line_substitutes s
+    LEFT JOIN materials m ON m.item_code = s.material_code
+    WHERE s.parent_line_id = ?
+    ORDER BY s.priority, s.id
+  `);
+  for (const ln of p.lines) ln.substitutes = subStmt.all(ln.id);
   return p;
 }
 
@@ -51,9 +61,14 @@ productsRouter.post('/', (req, res) => {
       const info = db.prepare('INSERT INTO products(code, name, description) VALUES (?, ?, ?)')
         .run(finalCode, name, description || null);
       const insLine = db.prepare('INSERT INTO product_lines(product_id, material_code, qty) VALUES (?, ?, ?)');
+      const insSub  = db.prepare('INSERT INTO product_line_substitutes(parent_line_id, material_code, qty, priority) VALUES (?, ?, ?, ?)');
       for (const ln of lines) {
         if (!ln.material_code) continue;
-        insLine.run(info.lastInsertRowid, ln.material_code, Number(ln.qty) || 1);
+        const r = insLine.run(info.lastInsertRowid, ln.material_code, Number(ln.qty) || 1);
+        for (const s of (ln.substitutes || [])) {
+          if (!s.material_code) continue;
+          insSub.run(r.lastInsertRowid, s.material_code, Number(s.qty) || 1, Number(s.priority) || 1);
+        }
       }
       return info.lastInsertRowid;
     });
@@ -78,11 +93,17 @@ productsRouter.put('/:id', (req, res) => {
         WHERE id = ?`)
         .run(code ?? null, name ?? null, description ?? null, id);
       if (Array.isArray(lines)) {
+        // DELETE 触发 FK CASCADE,会一并删 product_line_substitutes
         db.prepare('DELETE FROM product_lines WHERE product_id = ?').run(id);
         const insLine = db.prepare('INSERT INTO product_lines(product_id, material_code, qty) VALUES (?, ?, ?)');
+        const insSub  = db.prepare('INSERT INTO product_line_substitutes(parent_line_id, material_code, qty, priority) VALUES (?, ?, ?, ?)');
         for (const ln of lines) {
           if (!ln.material_code) continue;
-          insLine.run(id, ln.material_code, Number(ln.qty) || 1);
+          const r = insLine.run(id, ln.material_code, Number(ln.qty) || 1);
+          for (const s of (ln.substitutes || [])) {
+            if (!s.material_code) continue;
+            insSub.run(r.lastInsertRowid, s.material_code, Number(s.qty) || 1, Number(s.priority) || 1);
+          }
         }
       }
     });

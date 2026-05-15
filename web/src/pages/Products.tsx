@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   DndContext, DragOverlay,
   type DragEndEvent, type DragStartEvent,
   useDraggable, useDroppable,
   PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
-import { Plus, Save, Trash2, Search, GripVertical, X } from 'lucide-react';
+import { Plus, Save, Trash2, Search, GripVertical, X, Shuffle } from 'lucide-react';
 import { api } from '../api';
-import type { Material, Product, ProductLine } from '../types';
+import type { Material, Product, ProductLine, ProductLineSubstitute } from '../types';
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -153,6 +153,9 @@ function ProductEditor({
   const [lines, setLines] = useState<ProductLine[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [allRaw, setAllRaw] = useState<Material[]>([]);
+
+  useEffect(() => { api.listMaterials({ category: 'raw' }).then(setAllRaw); }, []);
 
   useEffect(() => {
     if (productId == null) {
@@ -244,6 +247,7 @@ function ProductEditor({
         <ProductBomDropZone
           lines={lines}
           onChange={setLines}
+          allMaterials={allRaw}
         />
 
         <p className="text-xs text-slate-400 mt-4">
@@ -255,12 +259,41 @@ function ProductEditor({
 }
 
 function ProductBomDropZone({
-  lines, onChange,
+  lines, onChange, allMaterials,
 }: {
   lines: ProductLine[];
   onChange: (l: ProductLine[]) => void;
+  allMaterials: Material[];
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: PRODUCT_DROP_ID });
+
+  function updateLine(i: number, patch: Partial<ProductLine>) {
+    const next = [...lines];
+    next[i] = { ...next[i], ...patch };
+    onChange(next);
+  }
+  function addSubstitute(i: number, code: string) {
+    const m = allMaterials.find((x) => x.item_code === code);
+    if (!m) return;
+    const subs = lines[i].substitutes || [];
+    if (subs.some((s) => s.material_code === code)) return;
+    if (lines[i].material_code === code) return; // 不能替换自己
+    const nextPri = (subs.reduce((mx, s) => Math.max(mx, s.priority), 0) || 0) + 1;
+    updateLine(i, { substitutes: [...subs, {
+      material_code: code, qty: 1, priority: nextPri,
+      item_name: m.item_name, uom: m.uom, category: m.category,
+    }] });
+  }
+  function updateSub(i: number, j: number, patch: Partial<ProductLineSubstitute>) {
+    const subs = [...(lines[i].substitutes || [])];
+    subs[j] = { ...subs[j], ...patch };
+    updateLine(i, { substitutes: subs });
+  }
+  function removeSub(i: number, j: number) {
+    const subs = (lines[i].substitutes || []).filter((_, idx) => idx !== j);
+    updateLine(i, { substitutes: subs });
+  }
+
   return (
     <div
       ref={setNodeRef}
@@ -281,40 +314,99 @@ function ProductBomDropZone({
         <table className="w-full text-sm">
           <thead className="text-xs text-slate-400 uppercase">
             <tr>
+              <th className="text-left py-1.5 pl-2 w-20">优先级</th>
               <th className="text-left py-1.5">编码</th>
               <th className="text-left py-1.5">名称</th>
-              <th className="text-right py-1.5 w-32">数量</th>
-              <th className="text-left py-1.5 w-16">单位</th>
+              <th className="text-right py-1.5 w-28">数量</th>
+              <th className="text-left py-1.5 w-14">单位</th>
               <th className="w-10"></th>
             </tr>
           </thead>
           <tbody>
-            {lines.map((l, i) => (
-              <tr key={l.material_code} className="border-t border-slate-100">
-                <td className="py-2 font-mono text-xs text-slate-600">{l.material_code}</td>
-                <td className="py-2 font-medium">{l.item_name}</td>
-                <td className="py-2">
-                  <input
-                    type="number" step="0.01" min="0"
-                    className="input text-right ml-auto w-28"
-                    value={l.qty}
-                    onChange={(e) => {
-                      const v = parseFloat(e.target.value);
-                      const next = [...lines];
-                      next[i] = { ...l, qty: isNaN(v) ? 0 : v };
-                      onChange(next);
-                    }}
-                  />
-                </td>
-                <td className="py-2 text-slate-500">{l.uom || '—'}</td>
-                <td className="py-2 text-right">
-                  <button className="btn-danger !p-1"
-                    onClick={() => onChange(lines.filter((_, idx) => idx !== i))}>
-                    <X size={14} />
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {lines.map((l, i) => {
+              const subs = l.substitutes || [];
+              const usedCodes = new Set([l.material_code, ...subs.map((s) => s.material_code)]);
+              const subOpts = allMaterials.filter((m) => !usedCodes.has(m.item_code));
+              return (
+              <React.Fragment key={l.id ?? `new-${i}-${l.material_code}`}>
+                <tr className="border-t-2 border-slate-200">
+                  <td className="py-2 pl-2">
+                    <span className="chip bg-brand-50 text-brand-700 border border-brand-100">主</span>
+                  </td>
+                  <td className="py-2 font-mono text-xs text-slate-600">{l.material_code}</td>
+                  <td className="py-2 font-medium">{l.item_name}</td>
+                  <td className="py-2">
+                    <input
+                      type="number" step="0.01" min="0"
+                      className="input text-right ml-auto w-24"
+                      value={l.qty}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value);
+                        updateLine(i, { qty: isNaN(v) ? 0 : v });
+                      }}
+                    />
+                  </td>
+                  <td className="py-2 text-slate-500">{l.uom || '—'}</td>
+                  <td className="py-2 text-right">
+                    <button className="btn-danger !p-1"
+                      onClick={() => onChange(lines.filter((_, idx) => idx !== i))}
+                      title="删除整行 (主+替换品)">
+                      <X size={14} />
+                    </button>
+                  </td>
+                </tr>
+                {subs.map((s, j) => (
+                  <tr key={`s-${j}-${s.material_code}`} className="bg-slate-50/60 border-t border-slate-100">
+                    <td className="py-1.5 pl-2">
+                      <span className="chip bg-amber-50 text-amber-700 border border-amber-100">替 P{s.priority}</span>
+                    </td>
+                    <td className="py-1.5 pl-4 font-mono text-xs text-slate-500">
+                      <Shuffle size={11} className="inline mr-1 -mt-0.5 text-amber-500" />
+                      {s.material_code}
+                    </td>
+                    <td className="py-1.5 text-slate-700">{s.item_name}</td>
+                    <td className="py-1.5">
+                      <input
+                        type="number" step="0.01" min="0"
+                        className="input text-right ml-auto w-24"
+                        value={s.qty}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          updateSub(i, j, { qty: isNaN(v) ? 0 : v });
+                        }}
+                      />
+                    </td>
+                    <td className="py-1.5 text-slate-500">{s.uom || '—'}</td>
+                    <td className="py-1.5 text-right">
+                      <button className="btn-danger !p-1" onClick={() => removeSub(i, j)} title="移除该替换品">
+                        <X size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-t border-dashed border-slate-200">
+                  <td colSpan={6} className="py-1.5 pl-6">
+                    <select
+                      className="text-xs text-slate-500 bg-transparent cursor-pointer hover:text-brand-600 border-0 focus:outline-none focus:ring-1 focus:ring-brand-200 rounded px-1"
+                      value=""
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v) addSubstitute(i, v);
+                        e.target.value = '';
+                      }}
+                    >
+                      <option value="">+ 添加替换品…</option>
+                      {subOpts.map((m) => (
+                        <option key={m.item_code} value={m.item_code}>
+                          {m.item_name.split('|')[0].trim()} ({m.item_code})
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       )}

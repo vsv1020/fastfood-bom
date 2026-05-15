@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   DndContext, DragOverlay,
   type DragEndEvent, type DragStartEvent,
@@ -7,10 +7,10 @@ import {
 } from '@dnd-kit/core';
 import {
   Plus, Save, Trash2, Search, GripVertical, X, Truck, Store,
-  Package, Droplet, Sigma, ChevronDown,
+  Package, Droplet, Sigma, ChevronDown, Shuffle,
 } from 'lucide-react';
 import { api } from '../api';
-import type { Combo, ComboLine, Product, Material, ComboBom, Channel } from '../types';
+import type { Combo, ComboLine, ComboLineSubstitute, Product, Material, ComboBom, Channel } from '../types';
 
 export default function CombosPage() {
   const [combos, setCombos] = useState<Combo[]>([]);
@@ -148,10 +148,13 @@ function ComboEditor({
   // 物料源:拉全部包材/酱料,前端按 (channel == target || channel == null) 过滤
   const [pkgAll,   setPkgAll]   = useState<Material[]>([]);
   const [sauceAll, setSauceAll] = useState<Material[]>([]);
+  // 单品候选,用作套餐内单品的替换品来源
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
 
   useEffect(() => {
     api.listMaterials({ category: 'packaging' }).then(setPkgAll);
     api.listMaterials({ category: 'sauce'     }).then(setSauceAll);
+    api.listProducts().then(setAllProducts);
   }, []);
 
   // 渠道在前、通用在后;同组按名字
@@ -268,7 +271,7 @@ function ComboEditor({
 
         {err && <div className="text-sm text-rose-600">{err}</div>}
 
-        <ComboProductsDropZone lines={lines} onChange={setLines} />
+        <ComboProductsDropZone lines={lines} onChange={setLines} allProducts={allProducts} />
 
         <div className="grid grid-cols-2 gap-4">
           <ChannelGroup
@@ -388,12 +391,39 @@ function MaterialMultiPicker({
 }
 
 function ComboProductsDropZone({
-  lines, onChange,
+  lines, onChange, allProducts,
 }: {
   lines: ComboLine[];
   onChange: (l: ComboLine[]) => void;
+  allProducts: Product[];
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: COMBO_DROP_ID });
+
+  function updateLine(i: number, patch: Partial<ComboLine>) {
+    const next = [...lines]; next[i] = { ...next[i], ...patch }; onChange(next);
+  }
+  function addSubstitute(i: number, productId: number) {
+    const p = allProducts.find((x) => x.id === productId);
+    if (!p) return;
+    const subs = lines[i].substitutes || [];
+    if (subs.some((s) => s.product_id === productId)) return;
+    if (lines[i].product_id === productId) return;
+    const nextPri = (subs.reduce((mx, s) => Math.max(mx, s.priority), 0) || 0) + 1;
+    updateLine(i, { substitutes: [...subs, {
+      product_id: productId, qty: 1, priority: nextPri,
+      product_code: p.code, product_name: p.name,
+    }] });
+  }
+  function updateSub(i: number, j: number, patch: Partial<ComboLineSubstitute>) {
+    const subs = [...(lines[i].substitutes || [])];
+    subs[j] = { ...subs[j], ...patch };
+    updateLine(i, { substitutes: subs });
+  }
+  function removeSub(i: number, j: number) {
+    const subs = (lines[i].substitutes || []).filter((_, idx) => idx !== j);
+    updateLine(i, { substitutes: subs });
+  }
+
   return (
     <div
       ref={setNodeRef}
@@ -414,38 +444,96 @@ function ComboProductsDropZone({
         <table className="w-full text-sm">
           <thead className="text-xs text-slate-400 uppercase">
             <tr>
+              <th className="text-left py-1.5 pl-2 w-20">优先级</th>
               <th className="text-left py-1.5">编码</th>
               <th className="text-left py-1.5">单品</th>
-              <th className="text-right py-1.5 w-32">数量</th>
+              <th className="text-right py-1.5 w-28">数量</th>
               <th className="w-10"></th>
             </tr>
           </thead>
           <tbody>
-            {lines.map((l, i) => (
-              <tr key={l.product_id} className="border-t border-slate-100">
-                <td className="py-2 font-mono text-xs text-slate-600">{l.product_code}</td>
-                <td className="py-2 font-medium">{l.product_name}</td>
-                <td className="py-2">
-                  <input
-                    type="number" step="1" min="0"
-                    className="input text-right ml-auto w-28"
-                    value={l.qty}
-                    onChange={(e) => {
-                      const v = parseInt(e.target.value);
-                      const next = [...lines];
-                      next[i] = { ...l, qty: isNaN(v) ? 0 : v };
-                      onChange(next);
-                    }}
-                  />
-                </td>
-                <td className="py-2 text-right">
-                  <button className="btn-danger !p-1"
-                    onClick={() => onChange(lines.filter((_, idx) => idx !== i))}>
-                    <X size={14} />
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {lines.map((l, i) => {
+              const subs = l.substitutes || [];
+              const usedIds = new Set([l.product_id, ...subs.map((s) => s.product_id)]);
+              const subOpts = allProducts.filter((p) => !usedIds.has(p.id));
+              return (
+              <React.Fragment key={l.id ?? `cln-${i}-${l.product_id}`}>
+                <tr className="border-t-2 border-slate-200">
+                  <td className="py-2 pl-2">
+                    <span className="chip bg-brand-50 text-brand-700 border border-brand-100">主</span>
+                  </td>
+                  <td className="py-2 font-mono text-xs text-slate-600">{l.product_code}</td>
+                  <td className="py-2 font-medium">{l.product_name}</td>
+                  <td className="py-2">
+                    <input
+                      type="number" step="1" min="0"
+                      className="input text-right ml-auto w-24"
+                      value={l.qty}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value);
+                        updateLine(i, { qty: isNaN(v) ? 0 : v });
+                      }}
+                    />
+                  </td>
+                  <td className="py-2 text-right">
+                    <button className="btn-danger !p-1"
+                      onClick={() => onChange(lines.filter((_, idx) => idx !== i))}
+                      title="删除整行 (主+替换品)">
+                      <X size={14} />
+                    </button>
+                  </td>
+                </tr>
+                {subs.map((s, j) => (
+                  <tr key={`s-${j}-${s.product_id}`} className="bg-slate-50/60 border-t border-slate-100">
+                    <td className="py-1.5 pl-2">
+                      <span className="chip bg-amber-50 text-amber-700 border border-amber-100">替 P{s.priority}</span>
+                    </td>
+                    <td className="py-1.5 pl-4 font-mono text-xs text-slate-500">
+                      <Shuffle size={11} className="inline mr-1 -mt-0.5 text-amber-500" />
+                      {s.product_code}
+                    </td>
+                    <td className="py-1.5 text-slate-700">{s.product_name}</td>
+                    <td className="py-1.5">
+                      <input
+                        type="number" step="1" min="0"
+                        className="input text-right ml-auto w-24"
+                        value={s.qty}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value);
+                          updateSub(i, j, { qty: isNaN(v) ? 0 : v });
+                        }}
+                      />
+                    </td>
+                    <td className="py-1.5 text-right">
+                      <button className="btn-danger !p-1" onClick={() => removeSub(i, j)} title="移除该替换品">
+                        <X size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-t border-dashed border-slate-200">
+                  <td colSpan={5} className="py-1.5 pl-6">
+                    <select
+                      className="text-xs text-slate-500 bg-transparent cursor-pointer hover:text-brand-600 border-0 focus:outline-none focus:ring-1 focus:ring-brand-200 rounded px-1"
+                      value=""
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v) addSubstitute(i, Number(v));
+                        e.target.value = '';
+                      }}
+                    >
+                      <option value="">+ 添加替换单品…</option>
+                      {subOpts.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({p.code})
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -500,6 +588,7 @@ function BomPreview({
         <table className="w-full text-sm">
           <thead className="text-xs text-slate-400 uppercase">
             <tr>
+              <th className="text-left py-1.5 w-20">优先级</th>
               <th className="text-left py-1.5">类别</th>
               <th className="text-left py-1.5">编码</th>
               <th className="text-left py-1.5">名称</th>
@@ -509,7 +598,13 @@ function BomPreview({
           </thead>
           <tbody>
             {bom.bom.map((r) => (
-              <tr key={r.item_code} className="border-t border-slate-100">
+              <tr key={`${r.item_code}|${r.priority}`}
+                  className={'border-t border-slate-100 ' + (r.priority > 0 ? 'bg-amber-50/30' : '')}>
+                <td className="py-1.5">
+                  {r.priority === 0
+                    ? <span className="chip bg-brand-50 text-brand-700 border border-brand-100">主</span>
+                    : <span className="chip bg-amber-50 text-amber-700 border border-amber-100">替 P{r.priority}</span>}
+                </td>
                 <td className="py-1.5">
                   {r.category === 'packaging' && <span className="chip-pkg-to">包材</span>}
                   {r.category === 'sauce'     && <span className="chip-sauce">酱料</span>}

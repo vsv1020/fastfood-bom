@@ -58,6 +58,26 @@ CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT
 );
+
+-- BOM 替换:单品 BOM 行的物料替换 (主物料在 product_lines,替换品在这里)
+CREATE TABLE IF NOT EXISTS product_line_substitutes (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  parent_line_id INTEGER NOT NULL REFERENCES product_lines(id) ON DELETE CASCADE,
+  material_code  TEXT NOT NULL REFERENCES materials(item_code),
+  qty            REAL NOT NULL DEFAULT 1,
+  priority       INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_pls_parent ON product_line_substitutes(parent_line_id);
+
+-- BOM 替换:套餐内单品的替换 (主单品在 combo_lines,替换单品在这里)
+CREATE TABLE IF NOT EXISTS combo_line_substitutes (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  parent_line_id INTEGER NOT NULL REFERENCES combo_lines(id) ON DELETE CASCADE,
+  product_id     INTEGER NOT NULL REFERENCES products(id),
+  qty            INTEGER NOT NULL DEFAULT 1,
+  priority       INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_cls_parent ON combo_line_substitutes(parent_line_id);
 `);
 
 // Migrate combos to support multiple packaging/sauce per channel via JSON-array TEXT columns.
