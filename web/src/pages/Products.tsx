@@ -8,6 +8,7 @@ import {
 import { Plus, Save, Trash2, Search, GripVertical, X, Shuffle, Download } from 'lucide-react';
 import { api } from '../api';
 import type { Material, Product, ProductLine, ProductLineSubstitute } from '../types';
+import { useLang, useT, localizedName } from '../i18n';
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -15,6 +16,8 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(false);
   const [pendingDrop, setPendingDrop] = useState<{ material: Material; ts: number } | null>(null);
   const [checked, setChecked] = useState<Set<number>>(new Set());
+  const { lang } = useLang();
+  const t = useT();
 
   async function load() {
     setLoading(true);
@@ -33,7 +36,7 @@ export default function ProductsPage() {
   function clearChecks() { setChecked(new Set()); }
   async function bulkDelete() {
     if (checked.size === 0) return;
-    if (!confirm(`删除选中的 ${checked.size} 个 BOM 单元? 已被套餐/订单引用的会被 FK 阻止`)) return;
+    if (!confirm(`${t('btn.delete')} ${checked.size} ?`)) return;
     const ids = [...checked];
     const failed: number[] = [];
     for (const id of ids) {
@@ -61,9 +64,9 @@ export default function ProductsPage() {
 
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
-    <div className="h-full grid grid-cols-[280px_1fr_320px]">
+    <div className="h-full flex">
       {/* 左:单品列表 */}
-      <aside className="border-r border-slate-200 bg-white flex flex-col">
+      <aside className="w-72 shrink-0 border-r border-slate-200 bg-white flex flex-col min-h-0">
         <header className={
           'p-3 border-b flex items-center gap-2 ' +
           (checked.size > 0 ? 'border-brand-100 bg-brand-50/70' : 'border-slate-100')
@@ -77,39 +80,39 @@ export default function ProductsPage() {
               if (checked.size === products.length) clearChecks();
               else setChecked(new Set(products.map((p) => p.id)));
             }}
-            title={checked.size === products.length ? '取消全选' : '全选'}
+            title={t('btn.select_all')}
           />
           {checked.size > 0 ? (
             <>
-              <span className="text-sm font-semibold text-brand-700">已选 {checked.size}</span>
-              <button className="btn-danger !py-1 !px-2 ml-auto" onClick={bulkDelete} title="批量删除">
-                <Trash2 size={14} /> 删除
+              <span className="text-sm font-semibold text-brand-700">{t('meta.also_selected')} {checked.size}</span>
+              <button className="btn-danger !py-1 !px-2 ml-auto" onClick={bulkDelete} title={t('btn.delete')}>
+                <Trash2 size={14} /> {t('btn.delete')}
               </button>
-              <button className="btn-ghost !py-1 !px-1.5" onClick={clearChecks} title="取消选择">
+              <button className="btn-ghost !py-1 !px-1.5" onClick={clearChecks} title={t('btn.cancel')}>
                 <X size={14} />
               </button>
             </>
           ) : (
             <>
               <div className="ml-1">
-                <div className="text-sm font-semibold text-slate-900">BOM 单元</div>
-                <div className="text-[11px] text-slate-500">{products.length} 个</div>
+                <div className="text-sm font-semibold text-slate-900">{t('title.bom_units')}</div>
+                <div className="text-[11px] text-slate-500">{products.length} {t('meta.n_units')}</div>
               </div>
-              <a className="btn-ghost !py-1 !px-2 ml-auto" href="/api/export/products.csv" download title="导出 BOM 单元为 CSV">
+              <a className="btn-ghost !py-1 !px-2 ml-auto" href="/api/export/products.csv" download title={t('btn.export')}>
                 <Download size={14} />
               </a>
               <button className="btn-primary !py-1 !px-2" onClick={() => setSelectedId('new')}>
-                <Plus size={14} /> 新建
+                <Plus size={14} /> {t('btn.new')}
               </button>
             </>
           )}
         </header>
         <div className="flex-1 overflow-y-auto">
-          {loading && <div className="p-4 text-sm text-slate-400">加载中…</div>}
+          {loading && <div className="p-4 text-sm text-slate-400">…</div>}
           {!loading && products.length === 0 && (
             <div className="p-6 text-center text-sm text-slate-400">
-              还没有 BOM 单元<br />
-              <span className="text-xs">从右上角"新建"开始</span>
+              {t('empty.no_products')}<br />
+              <span className="text-xs">{t('empty.click_new_to_start')}</span>
             </div>
           )}
           {products.map((p) => (
@@ -130,10 +133,10 @@ export default function ProductsPage() {
                 onChange={() => toggleCheck(p.id)}
               />
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-slate-900 truncate">{p.name}</div>
+                <div className="text-sm font-medium text-slate-900 truncate">{localizedName(p, lang)}</div>
                 <div className="flex items-center justify-between mt-0.5">
                   <span className="text-[11px] font-mono text-slate-500">{p.code}</span>
-                  <span className="text-[11px] text-slate-400">{p.line_count} 行</span>
+                  <span className="text-[11px] text-slate-400">{p.line_count} {t('meta.n_rows')}</span>
                 </div>
               </div>
             </div>
@@ -142,9 +145,9 @@ export default function ProductsPage() {
       </aside>
 
       {/* 中:编辑器 */}
-      <section className="bg-slate-50">
+      <section className="flex-1 min-w-0 bg-slate-50 overflow-hidden">
         {selectedId == null ? (
-          <EmptyState text="从左侧选择一个单品,或点击「新建」开始配置" />
+          <EmptyState text={t('empty.select_or_new_product')} />
         ) : (
           <ProductEditor
             key={selectedId === 'new' ? 'new' : selectedId}
@@ -158,11 +161,11 @@ export default function ProductsPage() {
       </section>
 
       {/* 右:原材料库面板 */}
-      <aside className="border-l border-slate-200 bg-white flex flex-col">
+      <aside className="w-80 shrink-0 border-l border-slate-200 bg-white flex flex-col min-h-0">
         <MaterialDragPanel
           category="raw"
-          title="原材料库"
-          hint="拖到中间区域,或直接点击 +1"
+          title={t('panel.material_lib')}
+          hint={t('panel.material_hint')}
           onAddItem={(m) => setPendingDrop({ material: m, ts: Date.now() })}
         />
       </aside>
@@ -213,21 +216,26 @@ function ProductEditor({
 }) {
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
+  const [nameEn, setNameEn] = useState('');
+  const [nameTh, setNameTh] = useState('');
   const [description, setDescription] = useState('');
   const [lines, setLines] = useState<ProductLine[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [allRaw, setAllRaw] = useState<Material[]>([]);
+  const t = useT();
 
   useEffect(() => { api.listMaterials({ category: 'raw' }).then(setAllRaw); }, []);
 
   useEffect(() => {
     if (productId == null) {
-      setCode(''); setName(''); setDescription(''); setLines([]); setErr(null);
+      setCode(''); setName(''); setNameEn(''); setNameTh(''); setDescription(''); setLines([]); setErr(null);
       return;
     }
     api.getProduct(productId).then((p) => {
-      setCode(p.code); setName(p.name); setDescription(p.description || '');
+      setCode(p.code); setName(p.name);
+      setNameEn(p.name_en || ''); setNameTh(p.name_th || '');
+      setDescription(p.description || '');
       setLines(p.lines || []); setErr(null);
     });
   }, [productId]);
@@ -256,10 +264,12 @@ function ProductEditor({
     try {
       const payload: any = {
         name: name.trim(),
+        name_en: nameEn.trim() || null,
+        name_th: nameTh.trim() || null,
         description: description.trim() || null,
-        lines: lines.map((l) => ({ material_code: l.material_code, qty: l.qty })),
+        lines: lines.map((l) => ({ material_code: l.material_code, qty: l.qty, substitutes: l.substitutes })),
       };
-      if (code.trim()) payload.code = code.trim(); // 编辑时保留原 code
+      if (code.trim()) payload.code = code.trim();
       const p = productId == null
         ? await api.createProduct(payload)
         : await api.updateProduct(productId, payload);
@@ -271,7 +281,7 @@ function ProductEditor({
 
   async function del() {
     if (productId == null) return;
-    if (!confirm('删除该单品? 已使用此单品的套餐将失效')) return;
+    if (!confirm(t('editor.confirm_delete_product'))) return;
     await api.deleteProduct(productId);
     onDeleted();
   }
@@ -279,29 +289,41 @@ function ProductEditor({
   return (
       <div className="h-full flex flex-col p-8 overflow-y-auto">
         <header className="flex items-start justify-between mb-6">
-          <div className="flex-1 max-w-xl space-y-3">
+          <div className="flex-1 max-w-2xl space-y-3">
             <div>
               <label className="label flex items-center gap-2">
-                单品名称
+                {t('editor.zh_main')}
                 <span className="font-mono text-[10px] text-slate-400 normal-case tracking-normal">
-                  {code || '(保存后自动分配编码)'}
+                  {code || t('lbl.placeholder_auto_code')}
                 </span>
               </label>
               <input className="input mt-1" value={name}
                      onChange={(e) => setName(e.target.value)} placeholder="如 芝士牛肉堡" />
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">English Name</label>
+                <input className="input mt-1" value={nameEn}
+                       onChange={(e) => setNameEn(e.target.value)} placeholder="e.g. Cheese Beef Burger" />
+              </div>
+              <div>
+                <label className="label">ชื่อภาษาไทย</label>
+                <input className="input mt-1" value={nameTh}
+                       onChange={(e) => setNameTh(e.target.value)} placeholder="เช่น ชีสบีฟเบอร์เกอร์" />
+              </div>
+            </div>
             <div>
-              <label className="label">描述 (可选)</label>
+              <label className="label">{t('lbl.desc')} ({t('placeholder.optional')})</label>
               <input className="input mt-1" value={description}
                      onChange={(e) => setDescription(e.target.value)} />
             </div>
           </div>
           <div className="flex gap-2 mt-7">
             {productId != null && (
-              <button className="btn-danger" onClick={del}><Trash2 size={14} /> 删除</button>
+              <button className="btn-danger" onClick={del}><Trash2 size={14} /> {t('btn.delete')}</button>
             )}
             <button className="btn-primary" onClick={save} disabled={saving || !name}>
-              <Save size={14} /> 保存
+              <Save size={14} /> {t('btn.save')}
             </button>
           </div>
         </header>
@@ -314,10 +336,7 @@ function ProductEditor({
           allMaterials={allRaw}
         />
 
-        <p className="text-xs text-slate-400 mt-4">
-          💡 提示: 从右侧"原材料库"面板拖动物料到上面区域,系统会自动按编码合并并 +1。
-          数量、删除可在每行直接编辑。
-        </p>
+        <p className="text-xs text-slate-400 mt-4">{t('editor.qty_hint')}</p>
       </div>
   );
 }
@@ -330,6 +349,7 @@ function ProductBomDropZone({
   allMaterials: Material[];
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: PRODUCT_DROP_ID });
+  const t = useT();
 
   function updateLine(i: number, patch: Partial<ProductLine>) {
     const next = [...lines];
@@ -367,22 +387,22 @@ function ProductBomDropZone({
       }
     >
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-slate-900">BOM 物料清单</h3>
-        <span className="text-xs text-slate-400">{lines.length} 行</span>
+        <h3 className="font-semibold text-slate-900">{t('editor.bom_list')}</h3>
+        <span className="text-xs text-slate-400">{lines.length} {t('meta.n_rows')}</span>
       </div>
       {lines.length === 0 ? (
         <div className="h-48 flex items-center justify-center border-2 border-dashed border-slate-200 rounded-xl text-sm text-slate-400">
-          🍔 把右侧原材料拖到这里,或点击右侧物料即可添加
+          {t('editor.empty_bom')}
         </div>
       ) : (
         <table className="w-full text-sm">
           <thead className="text-xs text-slate-400 uppercase">
             <tr>
-              <th className="text-left py-1.5 pl-2 w-20">优先级</th>
-              <th className="text-left py-1.5">编码</th>
-              <th className="text-left py-1.5">名称</th>
-              <th className="text-right py-1.5 w-28">数量</th>
-              <th className="text-left py-1.5 w-14">单位</th>
+              <th className="text-left py-1.5 pl-2 w-20">{t('lbl.priority')}</th>
+              <th className="text-left py-1.5">{t('lbl.code')}</th>
+              <th className="text-left py-1.5">{t('lbl.name')}</th>
+              <th className="text-right py-1.5 w-28">{t('lbl.qty')}</th>
+              <th className="text-left py-1.5 w-14">{t('lbl.unit')}</th>
               <th className="w-10"></th>
             </tr>
           </thead>
@@ -395,7 +415,7 @@ function ProductBomDropZone({
               <React.Fragment key={l.id ?? `new-${i}-${l.material_code}`}>
                 <tr className="border-t-2 border-slate-200">
                   <td className="py-2 pl-2">
-                    <span className="chip bg-brand-50 text-brand-700 border border-brand-100">主</span>
+                    <span className="chip bg-brand-50 text-brand-700 border border-brand-100">{t('lbl.main')}</span>
                   </td>
                   <td className="py-2 font-mono text-xs text-slate-600">{l.material_code}</td>
                   <td className="py-2 font-medium">{l.item_name}</td>
@@ -414,7 +434,7 @@ function ProductBomDropZone({
                   <td className="py-2 text-right">
                     <button className="btn-danger !p-1"
                       onClick={() => onChange(lines.filter((_, idx) => idx !== i))}
-                      title="删除整行 (主+替换品)">
+                      title={t('editor.delete_row_title')}>
                       <X size={14} />
                     </button>
                   </td>
@@ -422,7 +442,7 @@ function ProductBomDropZone({
                 {subs.map((s, j) => (
                   <tr key={`s-${j}-${s.material_code}`} className="bg-slate-50/60 border-t border-slate-100">
                     <td className="py-1.5 pl-2">
-                      <span className="chip bg-amber-50 text-amber-700 border border-amber-100">替 P{s.priority}</span>
+                      <span className="chip bg-amber-50 text-amber-700 border border-amber-100">{t('lbl.sub')} P{s.priority}</span>
                     </td>
                     <td className="py-1.5 pl-4 font-mono text-xs text-slate-500">
                       <Shuffle size={11} className="inline mr-1 -mt-0.5 text-amber-500" />
@@ -442,7 +462,7 @@ function ProductBomDropZone({
                     </td>
                     <td className="py-1.5 text-slate-500">{s.uom || '—'}</td>
                     <td className="py-1.5 text-right">
-                      <button className="btn-danger !p-1" onClick={() => removeSub(i, j)} title="移除该替换品">
+                      <button className="btn-danger !p-1" onClick={() => removeSub(i, j)} title={t('editor.remove_sub')}>
                         <X size={14} />
                       </button>
                     </td>
@@ -459,7 +479,7 @@ function ProductBomDropZone({
                         e.target.value = '';
                       }}
                     >
-                      <option value="">+ 添加替换品…</option>
+                      <option value="">{t('editor.add_sub')}</option>
                       {subOpts.map((m) => (
                         <option key={m.item_code} value={m.item_code}>
                           {m.item_name.split('|')[0].trim()} ({m.item_code})
@@ -491,6 +511,7 @@ export function MaterialDragPanel({
 }) {
   const [items, setItems] = useState<Material[]>([]);
   const [q, setQ] = useState('');
+  const t = useT();
 
   async function load() {
     setItems(await api.listMaterials({ category, channel, q: q || undefined }));
@@ -504,12 +525,12 @@ export function MaterialDragPanel({
         <div className="text-[11px] text-slate-500 mt-0.5">{hint}</div>
         <div className="relative mt-3">
           <Search size={14} className="absolute left-2.5 top-2 text-slate-400" />
-          <input className="input pl-7" placeholder="搜索…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="input pl-7" placeholder={t('panel.search')} value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
       </header>
       <div className="flex-1 overflow-y-auto p-2">
         {items.length === 0 && (
-          <div className="text-center text-sm text-slate-400 py-8">空</div>
+          <div className="text-center text-sm text-slate-400 py-8">—</div>
         )}
         {items.map((m) => (
           <DraggableMaterial
@@ -524,6 +545,7 @@ export function MaterialDragPanel({
 
 function DraggableMaterial({ material, onAdd }: { material: Material; onAdd?: () => void }) {
   const id = `mat-${material.item_code}`;
+  const t = useT();
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id, data: { material },
   });
@@ -538,7 +560,7 @@ function DraggableMaterial({ material, onAdd }: { material: Material; onAdd?: ()
         'group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer active:cursor-grabbing ' +
         'hover:bg-brand-50 hover:shadow-sm border border-transparent hover:border-brand-200 transition'
       }
-      title={onAdd ? '点击或拖到中间区域加入 BOM' : undefined}
+      title={onAdd ? t('panel.material_hint') : undefined}
     >
       <GripVertical size={14} className="text-slate-300 group-hover:text-brand-400" />
       <div className="min-w-0 flex-1">

@@ -34,7 +34,9 @@ export interface ProductLine {
 export interface Product {
   id: number;
   code: string;
-  name: string;
+  name: string;             // 中文主名
+  name_en?: string | null;
+  name_th?: string | null;
   description: string | null;
   created_at: string;
   line_count?: number;
@@ -64,7 +66,9 @@ export interface PackEntry { code: string; qty: number; }
 export interface Combo {
   id: number;
   code: string;
-  name: string;
+  name: string;             // 中文主名
+  name_en?: string | null;
+  name_th?: string | null;
   description: string | null;
   packaging_takeout_codes: PackEntry[];
   packaging_dinein_codes:  PackEntry[];

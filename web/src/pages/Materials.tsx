@@ -2,27 +2,30 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, RefreshCw, Search, Trash2, Pencil, X, Check, Merge, Sparkles, Split, Download } from 'lucide-react';
 import { api } from '../api';
 import type { Material, Category, Channel } from '../types';
+import { useT } from '../i18n';
 
 // Tab keys 不包含 'other' — 未分类的物料仅出现在「全部」tab,不占独立 tab
 type CategoryTabKey = 'all' | 'raw' | 'packaging' | 'sauce';
 type Filter = { category: CategoryTabKey; channel: Channel | '' };
 
 const CAT_LABELS: Record<CategoryTabKey, string> = {
-  all: '全部',
-  raw: '原材料',
-  packaging: '包材',
-  sauce: '酱料',
+  all: 'cat.all',
+  raw: 'cat.raw',
+  packaging: 'cat.packaging',
+  sauce: 'cat.sauce',
 };
 
 function CategoryChip({ cat }: { cat: Category }) {
-  if (cat === 'raw') return <span className="chip-raw">原料</span>;
-  if (cat === 'packaging') return <span className="chip-pkg-to">包材</span>;
-  if (cat === 'sauce') return <span className="chip-sauce">酱料</span>;
-  return <span className="chip bg-slate-100 text-slate-500">未分类</span>;
+  const t = useT();
+  if (cat === 'raw') return <span className="chip-raw">{t('cat.raw')}</span>;
+  if (cat === 'packaging') return <span className="chip-pkg-to">{t('cat.packaging')}</span>;
+  if (cat === 'sauce') return <span className="chip-sauce">{t('cat.sauce')}</span>;
+  return <span className="chip bg-slate-100 text-slate-500">{t('cat.other')}</span>;
 }
 
 // 行内类别切换 — 点 chip-like select 直接改类别
 function CategorySelect({ material, onChanged }: { material: Material; onChanged: () => void }) {
+  const t = useT();
   const baseClass = 'appearance-none cursor-pointer rounded-full px-2 py-0.5 text-xs font-medium border focus:outline-none focus:ring-2 focus:ring-brand-200';
   const styleByCat: Record<Category, string> = {
     raw:       'bg-amber-50 text-amber-700 border-amber-100 hover:border-amber-300',
@@ -34,25 +37,24 @@ function CategorySelect({ material, onChanged }: { material: Material; onChanged
     <select
       className={baseClass + ' ' + styleByCat[material.category]}
       value={material.category}
-      title="点击切换类别 — 选「未分类」可从分类 tab 移除"
+      title={t('lbl.category')}
       onChange={async (e) => {
         const newCat = e.target.value as Category;
         if (newCat === material.category) return;
         try {
-          // raw 或 other 不应有渠道,清空 channel
           const clearChannel = newCat === 'raw' || newCat === 'other';
           await api.updateMaterial(material.item_code, {
             category: newCat,
             channel: clearChannel ? null : (material.channel ?? null),
           });
           onChanged();
-        } catch (err: any) { alert('更新失败: ' + err.message); }
+        } catch (err: any) { alert(err.message); }
       }}
     >
-      <option value="raw">原料</option>
-      <option value="packaging">包材</option>
-      <option value="sauce">酱料</option>
-      <option value="other">未分类</option>
+      <option value="raw">{t('cat.raw')}</option>
+      <option value="packaging">{t('cat.packaging')}</option>
+      <option value="sauce">{t('cat.sauce')}</option>
+      <option value="other">{t('cat.other')}</option>
     </select>
   );
 }
@@ -82,9 +84,10 @@ function CategoryTab({ active, onClick, children, count }: {
 }
 
 function ChannelChip({ channel }: { channel: Channel | null }) {
-  if (channel === 'takeout') return <span className="chip-pkg-to">外卖</span>;
-  if (channel === 'dinein')  return <span className="chip-pkg-di">到店</span>;
-  return <span className="chip bg-slate-100 text-slate-500">通用</span>;
+  const t = useT();
+  if (channel === 'takeout') return <span className="chip-pkg-to">{t('chan.takeout')}</span>;
+  if (channel === 'dinein')  return <span className="chip-pkg-di">{t('chan.dinein')}</span>;
+  return <span className="chip bg-slate-100 text-slate-500">{t('chan.generic')}</span>;
 }
 
 export default function MaterialsPage() {
@@ -98,6 +101,7 @@ export default function MaterialsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkCat, setBulkCat] = useState<Category | ''>('');
   const [bulkChan, setBulkChan] = useState<Channel | 'null' | ''>('');
+  const t = useT();
 
   // 切换 tab / 渠道筛选 / 搜索时清空选择
   useEffect(() => { setSelected(new Set()); }, [filter.category, filter.channel, q]);
@@ -295,32 +299,31 @@ export default function MaterialsPage() {
   const showChannelFilter = filter.category !== 'raw';
 
   return (
+    <div className="h-full overflow-y-auto">
     <div className="p-8 max-w-7xl mx-auto">
       <header className="flex items-end justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">物料库</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            BOM 的最小单元 — 原材料、包材(分外卖/到店)、酱料(分外卖/到店)。
-          </p>
+          <h1 className="text-2xl font-semibold text-slate-900">{t('mat.title')}</h1>
+          <p className="text-sm text-slate-500 mt-1">{t('mat.subtitle')}</p>
         </div>
         <div className="flex gap-2">
-          <a className="btn-outline" href="/api/export/materials.csv" download title="导出当前物料库为 CSV">
-            <Download size={14} /> 导出
+          <a className="btn-outline" href="/api/export/materials.csv" download title={t('btn.export')}>
+            <Download size={14} /> {t('btn.export')}
           </a>
-          <button className="btn-outline" onClick={onClassify} title="按关键词把 ERP 原材料自动分到 包材 / 酱料">
-            <Sparkles size={14} /> 自动分类
+          <button className="btn-outline" onClick={onClassify}>
+            <Sparkles size={14} /> {t('mat.btn_classify')}
           </button>
-          <button className="btn-outline" onClick={onSplitChannel} title="按名字关键词把通用包材/酱料分流到 外卖 / 到店">
-            <Split size={14} /> 分流渠道
+          <button className="btn-outline" onClick={onSplitChannel}>
+            <Split size={14} /> {t('mat.btn_split')}
           </button>
-          <button className="btn-outline" onClick={onDedupe} title="按 名称+类别 合并重复项,优先保留 ERP 来源">
-            <Merge size={14} /> 去重
+          <button className="btn-outline" onClick={onDedupe}>
+            <Merge size={14} /> {t('mat.btn_dedupe')}
           </button>
           <button className="btn-outline" onClick={onSync}>
-            <RefreshCw size={14} /> 从 ERP 同步原材料
+            <RefreshCw size={14} /> {t('mat.btn_sync')}
           </button>
           <button className="btn-primary" onClick={() => setEditing('new')}>
-            <Plus size={14} /> 新增物料
+            <Plus size={14} /> {t('mat.btn_add')}
           </button>
         </div>
       </header>
@@ -339,13 +342,13 @@ export default function MaterialsPage() {
             onClick={() => setFilter({ category: c, channel: '' })}
             count={counts[c]}
           >
-            {CAT_LABELS[c]}
+            {t(CAT_LABELS[c])}
           </CategoryTab>
         ))}
 
         {showChannelFilter && (
           <div className="flex items-center gap-1 ml-3 pl-3 border-l border-slate-200">
-            {[{ v: '', l: '全部' }, { v: 'takeout', l: '外卖' }, { v: 'dinein', l: '到店' }].map(({ v, l }) => (
+            {[{ v: '', l: t('cat.all') }, { v: 'takeout', l: t('chan.takeout') }, { v: 'dinein', l: t('chan.dinein') }].map(({ v, l }) => (
               <button
                 key={v}
                 onClick={() => setFilter({ ...filter, channel: v as Channel | '' })}
@@ -365,7 +368,7 @@ export default function MaterialsPage() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="搜索 编码 / 名称"
+            placeholder={t('panel.search_with_code')}
             className="input pl-7 w-56"
           />
         </div>
@@ -373,37 +376,37 @@ export default function MaterialsPage() {
 
       {selected.size > 0 && (
         <div className="mb-3 rounded-xl border border-brand-200 bg-brand-50/70 px-4 py-2.5 flex flex-wrap items-center gap-2 shadow-soft">
-          <span className="text-sm font-semibold text-brand-700">已选 {selected.size} 条</span>
+          <span className="text-sm font-semibold text-brand-700">{t('meta.also_selected')} {selected.size}</span>
           <span className="text-slate-300">·</span>
           <select
             className="input !w-36 !py-1 !text-sm bg-white"
             value={bulkCat}
             onChange={(e) => setBulkCat(e.target.value as Category | '')}
           >
-            <option value="">→ 类别 (不变)</option>
-            <option value="raw">→ 原材料</option>
-            <option value="packaging">→ 包材</option>
-            <option value="sauce">→ 酱料</option>
-            <option value="other">→ 未分类</option>
+            <option value="">{t('mat.dropdown_unchanged_cat')}</option>
+            <option value="raw">{t('mat.to_raw')}</option>
+            <option value="packaging">{t('mat.to_packaging')}</option>
+            <option value="sauce">{t('mat.to_sauce')}</option>
+            <option value="other">{t('mat.to_other')}</option>
           </select>
           <select
             className="input !w-36 !py-1 !text-sm bg-white"
             value={bulkChan}
             onChange={(e) => setBulkChan(e.target.value as any)}
           >
-            <option value="">→ 渠道 (不变)</option>
-            <option value="takeout">→ 外卖</option>
-            <option value="dinein">→ 到店</option>
-            <option value="null">→ 通用 (清空)</option>
+            <option value="">{t('mat.dropdown_unchanged_chan')}</option>
+            <option value="takeout">{t('mat.to_takeout')}</option>
+            <option value="dinein">{t('mat.to_dinein')}</option>
+            <option value="null">{t('mat.to_generic')}</option>
           </select>
           <button className="btn-primary !py-1" onClick={applyBulk}>
-            <Check size={14} /> 应用
+            <Check size={14} /> {t('mat.dropdown_apply')}
           </button>
           <button className="btn-danger !py-1" onClick={bulkDelete}>
-            <Trash2 size={14} /> 批量删除
+            <Trash2 size={14} /> {t('btn.delete')}
           </button>
           <button className="btn-ghost !py-1 ml-auto" onClick={clearSelection}>
-            <X size={14} /> 取消选择
+            <X size={14} /> {t('btn.cancel')}
           </button>
         </div>
       )}
@@ -421,14 +424,14 @@ export default function MaterialsPage() {
                   onChange={toggleAllVisible}
                 />
               </th>
-              <th className="text-left px-4 py-2.5 font-medium">编码</th>
-              <th className="text-left px-4 py-2.5 font-medium">名称</th>
-              <th className="text-left px-4 py-2.5 font-medium">类别</th>
-              <th className="text-left px-4 py-2.5 font-medium">单位</th>
+              <th className="text-left px-4 py-2.5 font-medium">{t('lbl.code')}</th>
+              <th className="text-left px-4 py-2.5 font-medium">{t('lbl.name')}</th>
+              <th className="text-left px-4 py-2.5 font-medium">{t('lbl.category')}</th>
+              <th className="text-left px-4 py-2.5 font-medium">{t('lbl.unit')}</th>
               {filter.category !== 'raw' && (
-                <th className="text-left px-4 py-2.5 font-medium">渠道</th>
+                <th className="text-left px-4 py-2.5 font-medium">{t('lbl.channel')}</th>
               )}
-              <th className="text-left px-4 py-2.5 font-medium">来源</th>
+              <th className="text-left px-4 py-2.5 font-medium">{t('lbl.source')}</th>
               <th className="px-4 py-2.5 w-24"></th>
             </tr>
           </thead>
@@ -437,10 +440,10 @@ export default function MaterialsPage() {
               const numCols = 7 + (filter.category !== 'raw' ? 1 : 0);
               return <>
                 {loading && (
-                  <tr><td colSpan={numCols} className="p-8 text-center text-slate-400">加载中…</td></tr>
+                  <tr><td colSpan={numCols} className="p-8 text-center text-slate-400">{t('mat.loading')}</td></tr>
                 )}
                 {!loading && items.length === 0 && (
-                  <tr><td colSpan={numCols} className="p-8 text-center text-slate-400">暂无数据</td></tr>
+                  <tr><td colSpan={numCols} className="p-8 text-center text-slate-400">{t('mat.empty')}</td></tr>
                 )}
               </>;
             })()}
@@ -472,13 +475,13 @@ export default function MaterialsPage() {
                 <td className="px-4 py-2.5">
                   {m.source === 'erp'
                     ? <span className="chip bg-emerald-50 text-emerald-700">ERP</span>
-                    : <span className="chip bg-slate-100 text-slate-500">手动</span>}
+                    : <span className="chip bg-slate-100 text-slate-500">{t('mat.source_manual')}</span>}
                 </td>
                 <td className="px-4 py-2.5 text-right">
-                  <button className="btn-ghost !p-1" onClick={() => setEditing(m)} title="编辑">
+                  <button className="btn-ghost !p-1" onClick={() => setEditing(m)} title={t('btn.edit')}>
                     <Pencil size={14} />
                   </button>
-                  <button className="btn-danger !p-1" onClick={() => onDelete(m.item_code)} title="删除">
+                  <button className="btn-danger !p-1" onClick={() => onDelete(m.item_code)} title={t('btn.delete')}>
                     <Trash2 size={14} />
                   </button>
                 </td>
@@ -497,6 +500,7 @@ export default function MaterialsPage() {
         />
       )}
     </div>
+    </div>
   );
 }
 
@@ -506,6 +510,7 @@ function MaterialEditor({ initial, defaultCategory, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useT();
   const isNew = !initial;
   const [code, setCode] = useState(initial?.item_code || '');
   const [name, setName] = useState(initial?.item_name || '');
@@ -540,39 +545,39 @@ function MaterialEditor({ initial, defaultCategory, onClose, onSaved }: {
     <div className="fixed inset-0 z-40 bg-slate-900/30 flex items-center justify-center p-6" onClick={onClose}>
       <div className="card w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">{isNew ? '新增物料' : '编辑物料'}</h3>
+          <h3 className="text-lg font-semibold">{isNew ? t('mat.btn_add') : t('btn.edit')}</h3>
           <button onClick={onClose} className="btn-ghost !p-1"><X size={16} /></button>
         </div>
         <div className="space-y-3">
           <div>
-            <label className="label">编码</label>
+            <label className="label">{t('lbl.code')}</label>
             <input className="input mt-1 font-mono" value={code} disabled={!isNew}
-                   onChange={(e) => setCode(e.target.value)} placeholder="如 RM-BUN-PLAIN" />
+                   onChange={(e) => setCode(e.target.value)} placeholder="RM-BUN-PLAIN" />
           </div>
           <div>
-            <label className="label">名称</label>
+            <label className="label">{t('lbl.name')}</label>
             <input className="input mt-1" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">类别</label>
+              <label className="label">{t('lbl.category')}</label>
               <select className="input mt-1" value={category} onChange={(e) => setCategory(e.target.value as Category)}>
-                <option value="raw">原材料</option>
-                <option value="packaging">包材</option>
-                <option value="sauce">酱料</option>
-                <option value="other">未分类</option>
+                <option value="raw">{t('cat.raw')}</option>
+                <option value="packaging">{t('cat.packaging')}</option>
+                <option value="sauce">{t('cat.sauce')}</option>
+                <option value="other">{t('cat.other')}</option>
               </select>
             </div>
             <div>
-              <label className="label">单位</label>
+              <label className="label">{t('lbl.unit')}</label>
               <input className="input mt-1" value={uom} onChange={(e) => setUom(e.target.value)} />
             </div>
           </div>
           {category !== 'raw' && category !== 'other' && (
             <div>
-              <label className="label">渠道</label>
+              <label className="label">{t('lbl.channel')}</label>
               <div className="flex gap-2 mt-1">
-                {[{v:'takeout',l:'外卖'},{v:'dinein',l:'到店'}].map(({v,l}) => (
+                {[{v:'takeout',l:t('chan.takeout')},{v:'dinein',l:t('chan.dinein')}].map(({v,l}) => (
                   <button
                     key={v}
                     onClick={() => setChannel(v as Channel)}
@@ -585,15 +590,14 @@ function MaterialEditor({ initial, defaultCategory, onClose, onSaved }: {
                   >{l}</button>
                 ))}
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">外卖 / 到店 包材酱料用于套餐配置时二选一</p>
             </div>
           )}
           {err && <div className="text-rose-600 text-sm">{err}</div>}
         </div>
         <div className="mt-5 flex justify-end gap-2">
-          <button className="btn-ghost" onClick={onClose}>取消</button>
+          <button className="btn-ghost" onClick={onClose}>{t('btn.cancel')}</button>
           <button className="btn-primary" onClick={save} disabled={saving || !code || !name}>
-            <Check size={14} /> 保存
+            <Check size={14} /> {t('btn.save')}
           </button>
         </div>
       </div>

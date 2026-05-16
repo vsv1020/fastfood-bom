@@ -11,12 +11,15 @@ import {
 } from 'lucide-react';
 import { api } from '../api';
 import type { Combo, ComboLine, ComboLineSubstitute, Product, Material, ComboBom, Channel, PackEntry } from '../types';
+import { useLang, useT, localizedName } from '../i18n';
 
 export default function CombosPage() {
   const [combos, setCombos] = useState<Combo[]>([]);
   const [selectedId, setSelectedId] = useState<number | 'new' | null>(null);
   const [pendingDrop, setPendingDrop] = useState<{ product: Product; ts: number } | null>(null);
   const [checked, setChecked] = useState<Set<number>>(new Set());
+  const { lang } = useLang();
+  const t = useT();
 
   async function load() {
     setCombos(await api.listCombos());
@@ -33,7 +36,7 @@ export default function CombosPage() {
   function clearChecks() { setChecked(new Set()); }
   async function bulkDelete() {
     if (checked.size === 0) return;
-    if (!confirm(`删除选中的 ${checked.size} 个 BOM 组合?`)) return;
+    if (!confirm(`${t('btn.delete')} ${checked.size} ?`)) return;
     const ids = [...checked];
     const failed: number[] = [];
     for (const id of ids) {
@@ -61,8 +64,8 @@ export default function CombosPage() {
 
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
-    <div className="h-full grid grid-cols-[280px_1fr_320px]">
-      <aside className="border-r border-slate-200 bg-white flex flex-col">
+    <div className="h-full flex">
+      <aside className="w-72 shrink-0 border-r border-slate-200 bg-white flex flex-col min-h-0">
         <header className={
           'p-3 border-b flex items-center gap-2 ' +
           (checked.size > 0 ? 'border-brand-100 bg-brand-50/70' : 'border-slate-100')
@@ -76,29 +79,29 @@ export default function CombosPage() {
               if (checked.size === combos.length) clearChecks();
               else setChecked(new Set(combos.map((c) => c.id)));
             }}
-            title={checked.size === combos.length ? '取消全选' : '全选'}
+            title={t('btn.select_all')}
           />
           {checked.size > 0 ? (
             <>
-              <span className="text-sm font-semibold text-brand-700">已选 {checked.size}</span>
-              <button className="btn-danger !py-1 !px-2 ml-auto" onClick={bulkDelete} title="批量删除">
-                <Trash2 size={14} /> 删除
+              <span className="text-sm font-semibold text-brand-700">{t('meta.also_selected')} {checked.size}</span>
+              <button className="btn-danger !py-1 !px-2 ml-auto" onClick={bulkDelete} title={t('btn.delete')}>
+                <Trash2 size={14} /> {t('btn.delete')}
               </button>
-              <button className="btn-ghost !py-1 !px-1.5" onClick={clearChecks} title="取消选择">
+              <button className="btn-ghost !py-1 !px-1.5" onClick={clearChecks} title={t('btn.cancel')}>
                 <X size={14} />
               </button>
             </>
           ) : (
             <>
               <div className="ml-1">
-                <div className="text-sm font-semibold text-slate-900">BOM 组合</div>
-                <div className="text-[11px] text-slate-500">{combos.length} 个</div>
+                <div className="text-sm font-semibold text-slate-900">{t('title.bom_sets')}</div>
+                <div className="text-[11px] text-slate-500">{combos.length} {t('meta.n_units')}</div>
               </div>
-              <a className="btn-ghost !py-1 !px-2 ml-auto" href="/api/export/combos.csv" download title="导出 BOM 组合为 CSV">
+              <a className="btn-ghost !py-1 !px-2 ml-auto" href="/api/export/combos.csv" download title={t('btn.export')}>
                 <Download size={14} />
               </a>
               <button className="btn-primary !py-1 !px-2" onClick={() => setSelectedId('new')}>
-                <Plus size={14} /> 新建
+                <Plus size={14} /> {t('btn.new')}
               </button>
             </>
           )}
@@ -106,7 +109,7 @@ export default function CombosPage() {
         <div className="flex-1 overflow-y-auto">
           {combos.length === 0 && (
             <div className="p-6 text-center text-sm text-slate-400">
-              还没有 BOM 组合<br /><span className="text-xs">点击"新建"开始</span>
+              {t('empty.no_combos')}<br /><span className="text-xs">{t('empty.click_new_to_start')}</span>
             </div>
           )}
           {combos.map((c) => (
@@ -127,10 +130,10 @@ export default function CombosPage() {
                 onChange={() => toggleCheck(c.id)}
               />
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-slate-900 truncate">{c.name}</div>
+                <div className="text-sm font-medium text-slate-900 truncate">{localizedName(c, lang)}</div>
                 <div className="flex items-center justify-between mt-0.5">
                   <span className="text-[11px] font-mono text-slate-500">{c.code}</span>
-                  <span className="text-[11px] text-slate-400">{c.line_count} 单品</span>
+                  <span className="text-[11px] text-slate-400">{c.line_count} {t('meta.n_products')}</span>
                 </div>
               </div>
             </div>
@@ -138,10 +141,10 @@ export default function CombosPage() {
         </div>
       </aside>
 
-      <section className="bg-slate-50 overflow-hidden">
+      <section className="flex-1 min-w-0 bg-slate-50 overflow-hidden">
         {selectedId == null
           ? <div className="h-full flex items-center justify-center text-slate-400 text-sm">
-              选择左侧套餐,或点击「新建」开始组合
+              {t('empty.select_or_new_combo')}
             </div>
           : <ComboEditor
               key={selectedId === 'new' ? 'new' : selectedId}
@@ -154,7 +157,7 @@ export default function CombosPage() {
         }
       </section>
 
-      <aside className="border-l border-slate-200 bg-white flex flex-col">
+      <aside className="w-80 shrink-0 border-l border-slate-200 bg-white flex flex-col min-h-0">
         <ProductDragPanel
           onAddItem={(p) => setPendingDrop({ product: p, ts: Date.now() })}
         />
@@ -168,6 +171,8 @@ export default function CombosPage() {
 }
 
 function ProductDragPreview({ product }: { product: Product }) {
+  const { lang } = useLang();
+  const t = useT();
   return (
     <div
       className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white shadow-xl border border-brand-300 w-72 cursor-grabbing"
@@ -175,10 +180,10 @@ function ProductDragPreview({ product }: { product: Product }) {
     >
       <GripVertical size={14} className="text-brand-400" />
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-slate-900 truncate">{product.name}</div>
+        <div className="text-sm font-medium text-slate-900 truncate">{localizedName(product, lang)}</div>
         <div className="font-mono text-[10px] text-slate-500 truncate">{product.code}</div>
       </div>
-      <span className="text-[10px] text-slate-400">{product.line_count} 项</span>
+      <span className="text-[10px] text-slate-400">{product.line_count} {t('meta.n_rows')}</span>
     </div>
   );
 }
@@ -196,6 +201,8 @@ function ComboEditor({
 }) {
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
+  const [nameEn, setNameEn] = useState('');
+  const [nameTh, setNameTh] = useState('');
   const [description, setDescription] = useState('');
   const [lines, setLines] = useState<ComboLine[]>([]);
   const [pkgTo, setPkgTo] = useState<PackEntry[]>([]);
@@ -214,6 +221,7 @@ function ComboEditor({
   const [sauceAll, setSauceAll] = useState<Material[]>([]);
   // 单品候选,用作套餐内单品的替换品来源
   const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const t = useT();
 
   useEffect(() => {
     api.listMaterials({ category: 'packaging' }).then(setPkgAll);
@@ -237,13 +245,15 @@ function ComboEditor({
 
   useEffect(() => {
     if (comboId == null) {
-      setCode(''); setName(''); setDescription(''); setLines([]);
+      setCode(''); setName(''); setNameEn(''); setNameTh(''); setDescription(''); setLines([]);
       setPkgTo([]); setPkgDi([]); setSauceTo([]); setSauceDi([]);
       setBom(null); setErr(null);
       return;
     }
     api.getCombo(comboId).then((c) => {
-      setCode(c.code); setName(c.name); setDescription(c.description || '');
+      setCode(c.code); setName(c.name);
+      setNameEn(c.name_en || ''); setNameTh(c.name_th || '');
+      setDescription(c.description || '');
       setLines(c.lines || []);
       setPkgTo(c.packaging_takeout_codes || []); setPkgDi(c.packaging_dinein_codes || []);
       setSauceTo(c.sauce_takeout_codes || []); setSauceDi(c.sauce_dinein_codes || []);
@@ -281,8 +291,10 @@ function ComboEditor({
     try {
       const payload: any = {
         name: name.trim(),
+        name_en: nameEn.trim() || null,
+        name_th: nameTh.trim() || null,
         description: description.trim() || null,
-        lines: lines.map((l) => ({ product_id: l.product_id, qty: l.qty })),
+        lines: lines.map((l) => ({ product_id: l.product_id, qty: l.qty, substitutes: l.substitutes })),
         packaging_takeout_codes: pkgTo, packaging_dinein_codes: pkgDi,
         sauce_takeout_codes: sauceTo, sauce_dinein_codes: sauceDi,
       };
@@ -298,7 +310,7 @@ function ComboEditor({
 
   async function del() {
     if (comboId == null) return;
-    if (!confirm('删除该套餐?')) return;
+    if (!confirm(t('editor.confirm_delete_combo'))) return;
     await api.deleteCombo(comboId);
     onDeleted();
   }
@@ -306,29 +318,41 @@ function ComboEditor({
   return (
       <div className="h-full overflow-y-auto p-8 space-y-5">
         <header className="flex items-start justify-between">
-          <div className="flex-1 max-w-xl space-y-3">
+          <div className="flex-1 max-w-2xl space-y-3">
             <div>
               <label className="label flex items-center gap-2">
-                套餐名称
+                {t('editor.zh_main')}
                 <span className="font-mono text-[10px] text-slate-400 normal-case tracking-normal">
-                  {code || '(保存后自动分配编码)'}
+                  {code || t('lbl.placeholder_auto_code')}
                 </span>
               </label>
               <input className="input mt-1" value={name}
                      onChange={(e) => setName(e.target.value)} placeholder="如 芝士牛肉堡套餐" />
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">English Name</label>
+                <input className="input mt-1" value={nameEn}
+                       onChange={(e) => setNameEn(e.target.value)} placeholder="e.g. Cheese Beef Burger Set" />
+              </div>
+              <div>
+                <label className="label">ชื่อภาษาไทย</label>
+                <input className="input mt-1" value={nameTh}
+                       onChange={(e) => setNameTh(e.target.value)} placeholder="เช่น ชุดชีสบีฟเบอร์เกอร์" />
+              </div>
+            </div>
             <div>
-              <label className="label">描述 (可选)</label>
+              <label className="label">{t('lbl.desc')} ({t('placeholder.optional')})</label>
               <input className="input mt-1" value={description}
                      onChange={(e) => setDescription(e.target.value)} />
             </div>
           </div>
           <div className="flex gap-2 mt-7">
             {comboId != null && (
-              <button className="btn-danger" onClick={del}><Trash2 size={14} /> 删除</button>
+              <button className="btn-danger" onClick={del}><Trash2 size={14} /> {t('btn.delete')}</button>
             )}
             <button className="btn-primary" onClick={save} disabled={saving || !name}>
-              <Save size={14} /> 保存
+              <Save size={14} /> {t('btn.save')}
             </button>
           </div>
         </header>
@@ -340,14 +364,14 @@ function ComboEditor({
         <div className="grid grid-cols-2 gap-4">
           <ChannelGroup
             icon={<Truck size={14} />}
-            title="外卖配置"
+            title={t('editor.takeout_config')}
             colorClass="text-sky-700 bg-sky-50 border-sky-100"
             packaging={{ value: pkgTo, options: pkgToOpts, onChange: setPkgTo }}
             sauce    ={{ value: sauceTo, options: sauceToOpts, onChange: setSauceTo }}
           />
           <ChannelGroup
             icon={<Store size={14} />}
-            title="到店配置"
+            title={t('editor.dinein_config')}
             colorClass="text-violet-700 bg-violet-50 border-violet-100"
             packaging={{ value: pkgDi, options: pkgDiOpts, onChange: setPkgDi }}
             sauce    ={{ value: sauceDi, options: sauceDiOpts, onChange: setSauceDi }}
@@ -373,6 +397,7 @@ function ChannelGroup({
   packaging: { value: PackEntry[]; options: Material[]; onChange: (v: PackEntry[]) => void };
   sauce:     { value: PackEntry[]; options: Material[]; onChange: (v: PackEntry[]) => void };
 }) {
+  const t = useT();
   return (
     <div className={'card p-4 border ' + colorClass}>
       <div className="flex items-center gap-1.5 text-sm font-semibold mb-3">
@@ -381,11 +406,11 @@ function ChannelGroup({
       <div className="space-y-3">
         <MaterialMultiPicker
           icon={<Package size={13} className="text-slate-400" />}
-          label="包材" value={packaging.value} options={packaging.options} onChange={packaging.onChange}
+          label={t('editor.packaging')} value={packaging.value} options={packaging.options} onChange={packaging.onChange}
         />
         <MaterialMultiPicker
           icon={<Droplet size={13} className="text-slate-400" />}
-          label="酱料" value={sauce.value} options={sauce.options} onChange={sauce.onChange}
+          label={t('editor.sauce')} value={sauce.value} options={sauce.options} onChange={sauce.onChange}
         />
       </div>
     </div>
@@ -401,12 +426,13 @@ function MaterialMultiPicker({
   options: Material[];
   onChange: (v: PackEntry[]) => void;
 }) {
+  const t = useT();
   const byCode = new Map(options.map((o) => [o.item_code, o]));
   const remaining = options.filter((o) => !value.some((e) => e.code === o.item_code));
   return (
     <div>
       <span className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-slate-500 mb-1">
-        {icon} {label}{value.length > 0 && <span className="text-slate-400 normal-case">· 已选 {value.length}</span>}
+        {icon} {label}{value.length > 0 && <span className="text-slate-400 normal-case">· {t('meta.also_selected')} {value.length}</span>}
       </span>
       <div className="rounded-lg border border-slate-200 bg-white p-1.5 flex flex-wrap gap-1.5 min-h-[36px]">
         {value.map((entry, idx) => {
@@ -435,7 +461,7 @@ function MaterialMultiPicker({
               <button
                 onClick={() => onChange(value.filter((_, i) => i !== idx))}
                 className="ml-0.5 rounded hover:bg-black/10 p-0.5"
-                title="移除"
+                title={t('btn.delete')}
               >
                 <X size={11} />
               </button>
@@ -452,9 +478,9 @@ function MaterialMultiPicker({
               e.target.value = '';
             }}
           >
-            <option value="">+ 添加{label}…</option>
+            <option value="">+ {label}…</option>
             {remaining.map((o) => {
-              const tag = o.channel === 'takeout' ? '[外卖]' : o.channel === 'dinein' ? '[到店]' : '[通用]';
+              const tag = o.channel === 'takeout' ? `[${t('chan.takeout')}]` : o.channel === 'dinein' ? `[${t('chan.dinein')}]` : `[${t('chan.generic')}]`;
               return (
                 <option key={o.item_code} value={o.item_code}>
                   {tag} {o.item_name.split('|')[0].trim()} ({o.item_code})
@@ -476,6 +502,8 @@ function ComboProductsDropZone({
   allProducts: Product[];
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: COMBO_DROP_ID });
+  const t = useT();
+  const { lang } = useLang();
 
   function updateLine(i: number, patch: Partial<ComboLine>) {
     const next = [...lines]; next[i] = { ...next[i], ...patch }; onChange(next);
@@ -511,21 +539,21 @@ function ComboProductsDropZone({
       }
     >
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-slate-900">套餐内单品</h3>
-        <span className="text-xs text-slate-400">{lines.length} 个单品</span>
+        <h3 className="font-semibold text-slate-900">{t('editor.combo_items')}</h3>
+        <span className="text-xs text-slate-400">{lines.length} {t('meta.n_products')}</span>
       </div>
       {lines.length === 0 ? (
         <div className="h-32 flex items-center justify-center border-2 border-dashed border-slate-200 rounded-xl text-sm text-slate-400">
-          📦 把右侧"单品"拖到这里组成套餐 (相同单品自动 +1)
+          {t('editor.empty_combo')}
         </div>
       ) : (
         <table className="w-full text-sm">
           <thead className="text-xs text-slate-400 uppercase">
             <tr>
-              <th className="text-left py-1.5 pl-2 w-20">优先级</th>
-              <th className="text-left py-1.5">编码</th>
-              <th className="text-left py-1.5">单品</th>
-              <th className="text-right py-1.5 w-28">数量</th>
+              <th className="text-left py-1.5 pl-2 w-20">{t('lbl.priority')}</th>
+              <th className="text-left py-1.5">{t('lbl.code')}</th>
+              <th className="text-left py-1.5">{t('lbl.name')}</th>
+              <th className="text-right py-1.5 w-28">{t('lbl.qty')}</th>
               <th className="w-10"></th>
             </tr>
           </thead>
@@ -538,10 +566,10 @@ function ComboProductsDropZone({
               <React.Fragment key={l.id ?? `cln-${i}-${l.product_id}`}>
                 <tr className="border-t-2 border-slate-200">
                   <td className="py-2 pl-2">
-                    <span className="chip bg-brand-50 text-brand-700 border border-brand-100">主</span>
+                    <span className="chip bg-brand-50 text-brand-700 border border-brand-100">{t('lbl.main')}</span>
                   </td>
                   <td className="py-2 font-mono text-xs text-slate-600">{l.product_code}</td>
-                  <td className="py-2 font-medium">{l.product_name}</td>
+                  <td className="py-2 font-medium">{localizedName({ name: l.product_name || '', name_en: allProducts.find(p=>p.id===l.product_id)?.name_en, name_th: allProducts.find(p=>p.id===l.product_id)?.name_th }, lang)}</td>
                   <td className="py-2">
                     <input
                       type="number" step="1" min="0"
@@ -556,7 +584,7 @@ function ComboProductsDropZone({
                   <td className="py-2 text-right">
                     <button className="btn-danger !p-1"
                       onClick={() => onChange(lines.filter((_, idx) => idx !== i))}
-                      title="删除整行 (主+替换品)">
+                      title={t('editor.delete_row_title')}>
                       <X size={14} />
                     </button>
                   </td>
@@ -564,13 +592,13 @@ function ComboProductsDropZone({
                 {subs.map((s, j) => (
                   <tr key={`s-${j}-${s.product_id}`} className="bg-slate-50/60 border-t border-slate-100">
                     <td className="py-1.5 pl-2">
-                      <span className="chip bg-amber-50 text-amber-700 border border-amber-100">替 P{s.priority}</span>
+                      <span className="chip bg-amber-50 text-amber-700 border border-amber-100">{t('lbl.sub')} P{s.priority}</span>
                     </td>
                     <td className="py-1.5 pl-4 font-mono text-xs text-slate-500">
                       <Shuffle size={11} className="inline mr-1 -mt-0.5 text-amber-500" />
                       {s.product_code}
                     </td>
-                    <td className="py-1.5 text-slate-700">{s.product_name}</td>
+                    <td className="py-1.5 text-slate-700">{localizedName({ name: s.product_name || '', name_en: allProducts.find(p=>p.id===s.product_id)?.name_en, name_th: allProducts.find(p=>p.id===s.product_id)?.name_th }, lang)}</td>
                     <td className="py-1.5">
                       <input
                         type="number" step="1" min="0"
@@ -583,7 +611,7 @@ function ComboProductsDropZone({
                       />
                     </td>
                     <td className="py-1.5 text-right">
-                      <button className="btn-danger !p-1" onClick={() => removeSub(i, j)} title="移除该替换品">
+                      <button className="btn-danger !p-1" onClick={() => removeSub(i, j)} title={t('editor.remove_sub')}>
                         <X size={14} />
                       </button>
                     </td>
@@ -600,10 +628,10 @@ function ComboProductsDropZone({
                         e.target.value = '';
                       }}
                     >
-                      <option value="">+ 添加替换单品…</option>
+                      <option value="">{t('editor.add_sub_product')}</option>
                       {subOpts.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.name} ({p.code})
+                          {localizedName(p, lang)} ({p.code})
                         </option>
                       ))}
                     </select>
@@ -627,11 +655,12 @@ function BomPreview({
   bom: ComboBom | null;
   unsaved: boolean;
 }) {
+  const t = useT();
   return (
     <div className="card p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-slate-900 flex items-center gap-1.5">
-          <Sigma size={16} className="text-brand-500" /> 汇总 BOM 预览
+          <Sigma size={16} className="text-brand-500" /> {t('editor.bom_preview')}
         </h3>
         <div className="flex bg-slate-100 rounded-lg p-0.5">
           {(['takeout', 'dinein'] as Channel[]).map((c) => (
@@ -644,7 +673,7 @@ function BomPreview({
               }
             >
               {c === 'takeout' ? <Truck size={12} /> : <Store size={12} />}
-              {c === 'takeout' ? '外卖' : '到店'}
+              {c === 'takeout' ? t('chan.takeout') : t('chan.dinein')}
             </button>
           ))}
         </div>
@@ -652,13 +681,13 @@ function BomPreview({
 
       {unsaved && (
         <div className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg p-3 mb-3">
-          ⚠️ 保存后才能看到汇总 BOM (按渠道 / 包材 / 酱料 自动计算)
+          {t('editor.unsaved_bom')}
         </div>
       )}
 
       {!unsaved && (!bom || bom.bom.length === 0) && (
         <div className="text-sm text-slate-400 py-6 text-center">
-          没有 BOM 行 — 给套餐加点单品吧
+          {t('editor.no_bom_rows')}
         </div>
       )}
 
@@ -666,12 +695,12 @@ function BomPreview({
         <table className="w-full text-sm">
           <thead className="text-xs text-slate-400 uppercase">
             <tr>
-              <th className="text-left py-1.5 w-20">优先级</th>
-              <th className="text-left py-1.5">类别</th>
-              <th className="text-left py-1.5">编码</th>
-              <th className="text-left py-1.5">名称</th>
-              <th className="text-right py-1.5 w-24">数量</th>
-              <th className="text-left py-1.5 w-16">单位</th>
+              <th className="text-left py-1.5 w-20">{t('lbl.priority')}</th>
+              <th className="text-left py-1.5">{t('lbl.category')}</th>
+              <th className="text-left py-1.5">{t('lbl.code')}</th>
+              <th className="text-left py-1.5">{t('lbl.name')}</th>
+              <th className="text-right py-1.5 w-24">{t('lbl.qty')}</th>
+              <th className="text-left py-1.5 w-16">{t('lbl.unit')}</th>
             </tr>
           </thead>
           <tbody>
@@ -680,13 +709,13 @@ function BomPreview({
                   className={'border-t border-slate-100 ' + (r.priority > 0 ? 'bg-amber-50/30' : '')}>
                 <td className="py-1.5">
                   {r.priority === 0
-                    ? <span className="chip bg-brand-50 text-brand-700 border border-brand-100">主</span>
-                    : <span className="chip bg-amber-50 text-amber-700 border border-amber-100">替 P{r.priority}</span>}
+                    ? <span className="chip bg-brand-50 text-brand-700 border border-brand-100">{t('lbl.main')}</span>
+                    : <span className="chip bg-amber-50 text-amber-700 border border-amber-100">{t('lbl.sub')} P{r.priority}</span>}
                 </td>
                 <td className="py-1.5">
-                  {r.category === 'packaging' && <span className="chip-pkg-to">包材</span>}
-                  {r.category === 'sauce'     && <span className="chip-sauce">酱料</span>}
-                  {r.category === 'raw'       && <span className="chip-raw">原料</span>}
+                  {r.category === 'packaging' && <span className="chip-pkg-to">{t('cat.packaging')}</span>}
+                  {r.category === 'sauce'     && <span className="chip-sauce">{t('cat.sauce')}</span>}
+                  {r.category === 'raw'       && <span className="chip-raw">{t('cat.raw')}</span>}
                 </td>
                 <td className="py-1.5 font-mono text-xs text-slate-600">{r.item_code}</td>
                 <td className="py-1.5 font-medium">{r.item_name}</td>
@@ -710,24 +739,33 @@ function round(n: number) {
 function ProductDragPanel({ onAddItem }: { onAddItem?: (p: Product) => void }) {
   const [items, setItems] = useState<Product[]>([]);
   const [q, setQ] = useState('');
+  const { lang } = useLang();
+  const t = useT();
   useEffect(() => { api.listProducts().then(setItems); }, []);
-  const filtered = items.filter((p) =>
-    !q || p.name.toLowerCase().includes(q.toLowerCase()) || p.code.toLowerCase().includes(q.toLowerCase())
-  );
+  const filtered = items.filter((p) => {
+    if (!q) return true;
+    const Q = q.toLowerCase();
+    return (
+      p.name.toLowerCase().includes(Q) ||
+      (p.name_en || '').toLowerCase().includes(Q) ||
+      (p.name_th || '').toLowerCase().includes(Q) ||
+      p.code.toLowerCase().includes(Q)
+    );
+  });
   return (
     <>
       <header className="p-4 border-b border-slate-100">
-        <div className="text-sm font-semibold text-slate-900">单品库</div>
-        <div className="text-[11px] text-slate-500 mt-0.5">拖到中间区域,或直接点击 +1</div>
+        <div className="text-sm font-semibold text-slate-900">{t('panel.product_lib')}</div>
+        <div className="text-[11px] text-slate-500 mt-0.5">{t('panel.product_hint')}</div>
         <div className="relative mt-3">
           <Search size={14} className="absolute left-2.5 top-2 text-slate-400" />
-          <input className="input pl-7" placeholder="搜索单品…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="input pl-7" placeholder={t('panel.search')} value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
       </header>
       <div className="flex-1 overflow-y-auto p-2">
         {filtered.length === 0 && (
           <div className="text-center text-sm text-slate-400 py-8">
-            没有单品<br /><span className="text-xs">请先在「单品 BOM」配置</span>
+            {t('empty.no_products')}
           </div>
         )}
         {filtered.map((p) => (
@@ -743,6 +781,8 @@ function ProductDragPanel({ onAddItem }: { onAddItem?: (p: Product) => void }) {
 
 function DraggableProduct({ product, onAdd }: { product: Product; onAdd?: () => void }) {
   const id = `prod-${product.id}`;
+  const { lang } = useLang();
+  const t = useT();
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id, data: { product },
   });
@@ -757,14 +797,14 @@ function DraggableProduct({ product, onAdd }: { product: Product; onAdd?: () => 
         'group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer active:cursor-grabbing ' +
         'hover:bg-brand-50 hover:shadow-sm border border-transparent hover:border-brand-200 transition'
       }
-      title={onAdd ? '点击或拖到中间区域加入套餐' : undefined}
+      title={onAdd ? t('panel.product_hint') : undefined}
     >
       <GripVertical size={14} className="text-slate-300 group-hover:text-brand-400" />
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-slate-800 truncate">{product.name}</div>
+        <div className="text-sm font-medium text-slate-800 truncate">{localizedName(product, lang)}</div>
         <div className="font-mono text-[10px] text-slate-400 truncate">{product.code}</div>
       </div>
-      <span className="text-[10px] text-slate-400">{product.line_count} 项</span>
+      <span className="text-[10px] text-slate-400">{product.line_count} {t('meta.n_rows')}</span>
     </div>
   );
 }

@@ -9,17 +9,25 @@ import { ordersRouter } from './routes/orders.js';
 import { sharedBomsRouter } from './routes/sharedBoms.js';
 import { exportRouter } from './routes/export.js';
 import { erpRouter } from './routes/erp.js';
+import { authRouter } from './routes/auth.js';
+import { initAccessCodes, authMiddleware } from './auth.js';
 
 seedIfEmpty();
+initAccessCodes();
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '4mb' }));
 
 app.get('/api/health', (req, res) => {
   const n = db.prepare('SELECT COUNT(*) AS n FROM materials').get().n;
   res.json({ ok: true, materials: n });
 });
+
+// auth router 不受保护
+app.use('/api/auth', authRouter);
+// 之后所有 /api/* 由 middleware 验证 cookie
+app.use('/api', authMiddleware);
 
 app.use('/api/materials', materialsRouter);
 app.use('/api/products', productsRouter);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Save, RefreshCw, KeyRound } from 'lucide-react';
 import { api } from '../api';
+import { useT } from '../i18n';
 
 export default function SettingsPage() {
   const [url, setUrl] = useState('https://erp-victor.ttpos.dev');
@@ -15,6 +16,7 @@ export default function SettingsPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const t = useT();
 
   async function load() {
     const s = await api.getErpSettings();
@@ -78,12 +80,11 @@ export default function SettingsPage() {
   }
 
   return (
+    <div className="h-full overflow-y-auto">
     <div className="p-8 max-w-3xl mx-auto">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">设置</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          配置 ERPNext 连接,从指定 Item Group 同步 Raw Material 物料到本地物料库。
-        </p>
+        <h1 className="text-2xl font-semibold text-slate-900">{t('set.title')}</h1>
+        <p className="text-sm text-slate-500 mt-1">{t('set.subtitle')}</p>
       </header>
 
       {msg && (
@@ -94,55 +95,51 @@ export default function SettingsPage() {
 
       <div className="card p-6 space-y-4">
         <div className="flex items-center gap-2 text-slate-900 font-semibold">
-          <KeyRound size={16} /> ERPNext / Frappe 连接
+          <KeyRound size={16} /> {t('set.erp_conn')}
         </div>
 
         <div>
-          <label className="label">ERP URL</label>
+          <label className="label">{t('set.url')}</label>
           <input className="input mt-1" value={url} onChange={(e) => setUrl(e.target.value)}
-                 placeholder="https://erp-victor.ttpos.dev" />
+                 placeholder="https://erp.example.com" />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label">API Key</label>
+            <label className="label">{t('set.api_key')}</label>
             <input className="input mt-1 font-mono" value={apiKey} onChange={(e) => setApiKey(e.target.value)}
-                   placeholder="例如 abcd1234..." />
+                   placeholder="abcd1234..." />
           </div>
           <div>
             <label className="label">
-              API Secret {secretSet && <span className="text-emerald-600 normal-case font-normal">· 已保存</span>}
+              {t('set.api_secret')} {secretSet && <span className="text-emerald-600 normal-case font-normal">· {t('set.api_secret_saved')}</span>}
             </label>
             <input type="password" className="input mt-1 font-mono"
                    value={apiSecret} onChange={(e) => setApiSecret(e.target.value)}
-                   placeholder={secretSet ? '留空表示不修改' : '输入 API secret'} />
+                   placeholder={secretSet ? t('set.api_secret_placeholder_kept') : t('set.api_secret_placeholder_new')} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label">Item Group</label>
+            <label className="label">{t('set.item_group')}</label>
             <input className="input mt-1" value={itemGroup} onChange={(e) => setItemGroup(e.target.value)}
                    placeholder="Raw Material" />
-            <p className="text-[11px] text-slate-400 mt-1">
-              只同步该 Item Group 下、未禁用的 Item。
-            </p>
+            <p className="text-[11px] text-slate-400 mt-1">{t('set.item_group_hint')}</p>
           </div>
           <div>
-            <label className="label">中文名称字段</label>
+            <label className="label">{t('set.name_field')}</label>
             <input className="input mt-1 font-mono" value={nameField}
                    onChange={(e) => setNameField(e.target.value)}
                    placeholder="custom_item_name_zh" />
-            <p className="text-[11px] text-slate-400 mt-1">
-              ERPNext「Item Name (ZH)」对应的字段名。若该字段不存在,自动退回 <code>item_name</code>。
-            </p>
+            <p className="text-[11px] text-slate-400 mt-1">{t('set.name_field_hint')}</p>
           </div>
         </div>
 
         <div className="pt-2 border-t border-slate-100">
           <label className="label flex items-center justify-between">
-            <span>Item Code 白名单 <span className="text-slate-400 normal-case font-normal">(可选)</span></span>
+            <span>{t('set.whitelist_title')} <span className="text-slate-400 normal-case font-normal">({t('placeholder.optional')})</span></span>
             <span className="font-mono text-[10px] text-slate-400 normal-case tracking-normal">
-              已解析 {(whitelist || '').split(/[\s,;]+/).filter((s) => s && !s.startsWith('#')).length} 个 unique code
-              {whitelistCount !== undefined ? ` · 上次保存 ${whitelistCount}` : ''}
+              {t('set.whitelist_parsed')} {(whitelist || '').split(/[\s,;]+/).filter((s) => s && !s.startsWith('#')).length} {t('set.whitelist_unique')}
+              {whitelistCount !== undefined ? ` · ${t('set.whitelist_last')} ${whitelistCount}` : ''}
             </span>
           </label>
           <textarea
@@ -159,34 +156,27 @@ export default function SettingsPage() {
                 onChange={(e) => setWhitelistStrict(e.target.checked)}
                 className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-300"
               />
-              <span className="font-medium text-slate-700">严格模式</span>
+              <span className="font-medium text-slate-700">{t('set.strict_mode')}</span>
             </label>
-            <span className="text-slate-400">
-              · 启用后,同步结束自动删除 source=erp 且不在白名单内的物料(被 BOM 引用的跳过)。留空白名单 = 退回按 Item Group 全量同步。
-            </span>
+            <span className="text-slate-400">· {t('set.strict_mode_hint')}</span>
           </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
           <button className="btn-outline" onClick={sync} disabled={syncing}>
             <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-            {syncing ? '同步中…' : '立即同步'}
+            {syncing ? t('set.syncing') : t('set.sync_now')}
           </button>
           <button className="btn-primary" onClick={save} disabled={saving}>
-            <Save size={14} /> 保存
+            <Save size={14} /> {t('btn.save')}
           </button>
         </div>
       </div>
 
       <div className="card p-6 mt-4 text-sm text-slate-600 space-y-2">
-        <h3 className="font-semibold text-slate-900">使用流程</h3>
-        <ol className="list-decimal ml-5 space-y-1">
-          <li>在「设置」填入 ERP URL + API key/secret + Item Group → 保存 → 立即同步</li>
-          <li>「物料库」中按需补充 包材 / 酱料,并标记 外卖 / 到店</li>
-          <li>「单品 BOM」拖动原材料,组成最小单元的单品 (如:芝士牛肉堡)</li>
-          <li>「套餐组合」拖单品组合套餐,选择 外卖+到店 的包材/酱料,系统自动汇总 BOM</li>
-        </ol>
+        <h3 className="font-semibold text-slate-900">{t('set.usage_title')}</h3>
       </div>
+    </div>
     </div>
   );
 }

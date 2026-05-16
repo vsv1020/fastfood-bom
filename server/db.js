@@ -149,6 +149,11 @@ ensureColumn('combos', 'packaging_takeout_codes', 'TEXT');
 ensureColumn('combos', 'packaging_dinein_codes',  'TEXT');
 ensureColumn('combos', 'sauce_takeout_codes',     'TEXT');
 ensureColumn('combos', 'sauce_dinein_codes',      'TEXT');
+// 三语名称: name 字段当作中文主名,加英文/泰文
+ensureColumn('products', 'name_en', 'TEXT');
+ensureColumn('products', 'name_th', 'TEXT');
+ensureColumn('combos',   'name_en', 'TEXT');
+ensureColumn('combos',   'name_th', 'TEXT');
 
 export function getSetting(key) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
