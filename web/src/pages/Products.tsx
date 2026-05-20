@@ -5,7 +5,7 @@ import {
   useDraggable, useDroppable,
   PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
-import { Plus, Save, Trash2, Search, GripVertical, X, Shuffle, Download } from 'lucide-react';
+import { Plus, Save, Trash2, Search, GripVertical, X, Shuffle, Download, Copy } from 'lucide-react';
 import { api } from '../api';
 import type { Material, Product, ProductLine, ProductLineSubstitute } from '../types';
 import { useLang, useT, localizedName } from '../i18n';
@@ -286,6 +286,23 @@ function ProductEditor({
     onDeleted();
   }
 
+  async function duplicate() {
+    setSaving(true); setErr(null);
+    try {
+      // 用当前编辑器状态创建一个新单品;不带 code,后端自动分配新编码
+      const p = await api.createProduct({
+        name: (name.trim() || '—') + ' ' + t('editor.copy_suffix'),
+        name_en: nameEn.trim() || null,
+        name_th: nameTh.trim() || null,
+        description: description.trim() || null,
+        lines: lines.map((l) => ({ material_code: l.material_code, qty: l.qty, substitutes: l.substitutes })),
+      } as any);
+      onSaved(p);
+    } catch (e: any) {
+      setErr(e.message);
+    } finally { setSaving(false); }
+  }
+
   return (
       <div className="h-full flex flex-col p-8 overflow-y-auto">
         <header className="flex items-start justify-between mb-6">
@@ -321,6 +338,11 @@ function ProductEditor({
           <div className="flex gap-2 mt-7">
             {productId != null && (
               <button className="btn-danger" onClick={del}><Trash2 size={14} /> {t('btn.delete')}</button>
+            )}
+            {productId != null && (
+              <button className="btn-outline" onClick={duplicate} disabled={saving} title={t('btn.duplicate')}>
+                <Copy size={14} /> {t('btn.duplicate')}
+              </button>
             )}
             <button className="btn-primary" onClick={save} disabled={saving || !name}>
               <Save size={14} /> {t('btn.save')}

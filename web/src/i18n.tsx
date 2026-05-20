@@ -21,6 +21,7 @@ const D: Dict = {
   'btn.cancel':     { zh: '取消',       en: 'Cancel',      th: 'ยกเลิก' },
   'btn.export':     { zh: '导出',       en: 'Export',      th: 'ส่งออก' },
   'btn.edit':       { zh: '编辑',       en: 'Edit',        th: 'แก้ไข' },
+  'btn.duplicate':  { zh: '复制',       en: 'Duplicate',   th: 'ทำสำเนา' },
   'btn.select_all': { zh: '全选',       en: 'Select all',  th: 'เลือกทั้งหมด' },
   'btn.selected_n': { zh: '已选',       en: 'Selected',    th: 'เลือกแล้ว' },
   // shared field labels
@@ -76,6 +77,7 @@ const D: Dict = {
   'editor.confirm_delete_combo':   { zh: '删除该 BOM 组合?', en: 'Delete this BOM set?', th: 'ลบชุด BOM นี้?' },
   'editor.delete_row_title': { zh: '删除整行 (主+替换品)',  en: 'Delete row (main + subs)', th: 'ลบทั้งแถว' },
   'editor.remove_sub':       { zh: '移除该替换品',         en: 'Remove substitute',     th: 'นำสินค้าทดแทนออก' },
+  'editor.copy_suffix':      { zh: '副本',                 en: '(copy)',                th: '(สำเนา)' },
   'editor.bom_priority':     { zh: '优先级',               en: 'Priority',              th: 'ลำดับ' },
   'editor.qty_hint':         { zh: '💡 提示: 从右侧"原材料库"面板拖动物料到上面区域,系统会自动按编码合并并 +1。数量、删除可在每行直接编辑。', en: '💡 Tip: Drag materials from the right panel into the area above. Same code auto-merges +1. Edit qty / delete inline.', th: '💡 ลากวัตถุดิบจากด้านขวามาด้านบน; รหัสเดียวกันรวมอัตโนมัติ +1' },
   // panel

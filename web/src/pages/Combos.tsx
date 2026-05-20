@@ -7,7 +7,7 @@ import {
 } from '@dnd-kit/core';
 import {
   Plus, Save, Trash2, Search, GripVertical, X, Truck, Store,
-  Package, Droplet, Sigma, ChevronDown, Shuffle, Download,
+  Package, Droplet, Sigma, ChevronDown, Shuffle, Download, Copy,
 } from 'lucide-react';
 import { api } from '../api';
 import type { Combo, ComboLine, ComboLineSubstitute, Product, Material, ComboBom, Channel, PackEntry } from '../types';
@@ -315,6 +315,25 @@ function ComboEditor({
     onDeleted();
   }
 
+  async function duplicate() {
+    setSaving(true); setErr(null);
+    try {
+      // 用当前编辑器状态创建一个新套餐;不带 code,后端自动分配新编码
+      const c = await api.createCombo({
+        name: (name.trim() || '—') + ' ' + t('editor.copy_suffix'),
+        name_en: nameEn.trim() || null,
+        name_th: nameTh.trim() || null,
+        description: description.trim() || null,
+        lines: lines.map((l) => ({ product_id: l.product_id, qty: l.qty, substitutes: l.substitutes })),
+        packaging_takeout_codes: pkgTo, packaging_dinein_codes: pkgDi,
+        sauce_takeout_codes: sauceTo, sauce_dinein_codes: sauceDi,
+      } as any);
+      onSaved(c);
+    } catch (e: any) {
+      setErr(e.message);
+    } finally { setSaving(false); }
+  }
+
   return (
       <div className="h-full overflow-y-auto p-8 space-y-5">
         <header className="flex items-start justify-between">
@@ -350,6 +369,11 @@ function ComboEditor({
           <div className="flex gap-2 mt-7">
             {comboId != null && (
               <button className="btn-danger" onClick={del}><Trash2 size={14} /> {t('btn.delete')}</button>
+            )}
+            {comboId != null && (
+              <button className="btn-outline" onClick={duplicate} disabled={saving} title={t('btn.duplicate')}>
+                <Copy size={14} /> {t('btn.duplicate')}
+              </button>
             )}
             <button className="btn-primary" onClick={save} disabled={saving || !name}>
               <Save size={14} /> {t('btn.save')}
