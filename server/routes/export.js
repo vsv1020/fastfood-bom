@@ -24,6 +24,29 @@ function send(res, name, csv) {
   res.send(csv);
 }
 
+// 解析 ?folder_id= 导出范围:
+//   未提供 / 空      -> null      (导出全部)
+//   'ungrouped'      -> 'ungrouped'(仅未归类)
+//   数字 id          -> [id, ...全部后代 folder id]  (该文件夹及子文件夹)
+function folderScope(raw) {
+  if (raw === undefined || raw === '') return null;
+  if (raw === 'ungrouped') return 'ungrouped';
+  const root = Number(raw);
+  if (!Number.isFinite(root)) return null;
+  const ids = new Set([root]);
+  let frontier = [root];
+  while (frontier.length) {
+    const next = [];
+    for (const fid of frontier) {
+      for (const k of db.prepare('SELECT id FROM folders WHERE parent_id = ?').all(fid)) {
+        if (!ids.has(k.id)) { ids.add(k.id); next.push(k.id); }
+      }
+    }
+    frontier = next;
+  }
+  return [...ids];
+}
+
 // ---- 物料 ----
 exportRouter.get('/materials.csv', (req, res) => {
   const rows = db.prepare(`
@@ -40,7 +63,16 @@ exportRouter.get('/materials.csv', (req, res) => {
 // ---- BOM 单元 (产品 + 主物料 + 替换品 都扁平展开,priority 列区分) ----
 exportRouter.get('/products.csv', (req, res) => {
   const out = [];
-  const products = db.prepare(`SELECT id, code, name, description FROM products ORDER BY code`).all();
+  const scope = folderScope(req.query.folder_id);
+  let products;
+  if (scope === null) {
+    products = db.prepare(`SELECT id, code, name, description FROM products ORDER BY code`).all();
+  } else if (scope === 'ungrouped') {
+    products = db.prepare(`SELECT id, code, name, description FROM products WHERE folder_id IS NULL ORDER BY code`).all();
+  } else {
+    const ph = scope.map(() => '?').join(',');
+    products = db.prepare(`SELECT id, code, name, description FROM products WHERE folder_id IN (${ph}) ORDER BY code`).all(...scope);
+  }
   const lineStmt = db.prepare(`
     SELECT pl.id, pl.material_code, pl.qty, m.item_name, m.uom, m.category
     FROM product_lines pl LEFT JOIN materials m ON m.item_code = pl.material_code
@@ -89,7 +121,16 @@ exportRouter.get('/products.csv', (req, res) => {
 // ---- BOM 组合 (套餐扁平展开:每行一个 child product,主/替换 / 包装/酱料 列出) ----
 exportRouter.get('/combos.csv', (req, res) => {
   const out = [];
-  const combos = db.prepare(`SELECT * FROM combos ORDER BY code`).all();
+  const scope = folderScope(req.query.folder_id);
+  let combos;
+  if (scope === null) {
+    combos = db.prepare(`SELECT * FROM combos ORDER BY code`).all();
+  } else if (scope === 'ungrouped') {
+    combos = db.prepare(`SELECT * FROM combos WHERE folder_id IS NULL ORDER BY code`).all();
+  } else {
+    const ph = scope.map(() => '?').join(',');
+    combos = db.prepare(`SELECT * FROM combos WHERE folder_id IN (${ph}) ORDER BY code`).all(...scope);
+  }
   const lineStmt = db.prepare(`
     SELECT cl.id, cl.product_id, cl.qty, p.code, p.name
     FROM combo_lines cl JOIN products p ON p.id = cl.product_id

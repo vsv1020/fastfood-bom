@@ -20,6 +20,7 @@ const D: Dict = {
   'btn.delete':     { zh: '删除',       en: 'Delete',      th: 'ลบ' },
   'btn.cancel':     { zh: '取消',       en: 'Cancel',      th: 'ยกเลิก' },
   'btn.export':     { zh: '导出',       en: 'Export',      th: 'ส่งออก' },
+  'export.all':     { zh: '导出全部',   en: 'Export all',  th: 'ส่งออกทั้งหมด' },
   'btn.edit':       { zh: '编辑',       en: 'Edit',        th: 'แก้ไข' },
   'btn.duplicate':  { zh: '复制',       en: 'Duplicate',   th: 'ทำสำเนา' },
   'btn.select_all': { zh: '全选',       en: 'Select all',  th: 'เลือกทั้งหมด' },
@@ -167,7 +168,7 @@ const D: Dict = {
 
   // 订单 BOM page
   'order.title':             { zh: '订单 BOM 计算',        en: 'Order BOM Calculator',  th: 'คำนวณ BOM ออเดอร์' },
-  'order.subtitle':          { zh: '拼一个临时订单(单品 + 套餐 + 数量 + 渠道),右侧实时汇总最终物料', en: 'Build a temp order, see real-time BOM rollup on the right', th: 'สร้างออเดอร์ชั่วคราว ดูสรุป BOM ทันที' },
+  'order.subtitle':          { zh: '拼一个临时订单(套餐 + 数量 + 渠道),右侧实时汇总最终物料', en: 'Build a temp order, see real-time BOM rollup on the right', th: 'สร้างออเดอร์ชั่วคราว ดูสรุป BOM ทันที' },
   'order.clear':             { zh: '清空',                 en: 'Clear',                 th: 'ล้าง' },
   'order.add_product':       { zh: '添加单品',             en: 'Add BOM unit',          th: 'เพิ่มหน่วย BOM' },
   'order.add_combo':         { zh: '添加套餐',             en: 'Add BOM set',           th: 'เพิ่มชุด BOM' },
@@ -176,7 +177,7 @@ const D: Dict = {
   'order.items_title':       { zh: '订单项',               en: 'Order items',           th: 'รายการออเดอร์' },
   'order.items_count':       { zh: '项 · 共',              en: 'items · total',         th: 'รายการ · รวม' },
   'order.servings':          { zh: '份',                   en: 'servings',              th: 'ชุด' },
-  'order.empty':             { zh: '🛒 上面下拉选单品/套餐加入订单', en: '🛒 Use dropdowns above to add items', th: '🛒 เพิ่มรายการจากด้านบน' },
+  'order.empty':             { zh: '🛒 上面下拉选套餐加入订单', en: '🛒 Use dropdowns above to add items', th: '🛒 เพิ่มรายการจากด้านบน' },
   'order.kind_product':      { zh: '单品',                 en: 'Unit',                  th: 'หน่วย' },
   'order.kind_combo':        { zh: '套餐',                 en: 'Set',                   th: 'ชุด' },
   'order.deleted':           { zh: '(已删除)',             en: '(deleted)',             th: '(ถูกลบ)' },

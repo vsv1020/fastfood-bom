@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, ShoppingCart, Sigma, Truck, Store, Package, Share2, Layers } from 'lucide-react';
+import { Plus, Trash2, ShoppingCart, Sigma, Truck, Store, Package, Share2, Layers, Download } from 'lucide-react';
 import { api } from '../api';
-import type { Product, Combo, BomRow, Channel } from '../types';
+import type { Combo, BomRow, Channel } from '../types';
 import { useT, useLang, localizedName } from '../i18n';
 
 type SharedHit = {
@@ -17,7 +17,6 @@ type OrderItem =
   | { kind: 'combo';   id: number; qty: number; channel: Channel };
 
 export default function OrdersPage() {
-  const [products, setProducts] = useState<Product[]>([]);
   const [combos,   setCombos]   = useState<Combo[]>([]);
   const [items, setItems] = useState<OrderItem[]>([]);
   const [bom, setBom] = useState<BomRow[]>([]);
@@ -28,7 +27,6 @@ export default function OrdersPage() {
   const { lang } = useLang();
 
   useEffect(() => {
-    api.listProducts().then(setProducts);
     api.listCombos().then(setCombos);
   }, []);
 
@@ -44,18 +42,6 @@ export default function OrdersPage() {
       .finally(() => setLoading(false));
   }, [items]);
 
-  function addProduct(id: number) {
-    if (!id) return;
-    setItems((prev) => {
-      const idx = prev.findIndex((x) => x.kind === 'product' && x.id === id);
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = { ...next[idx], qty: next[idx].qty + 1 };
-        return next;
-      }
-      return [...prev, { kind: 'product', id, qty: 1 }];
-    });
-  }
   function addCombo(id: number, channel: Channel = 'takeout') {
     if (!id) return;
     setItems((prev) => {
@@ -75,6 +61,38 @@ export default function OrdersPage() {
   }
   function removeItem(i: number) { setItems(items.filter((_, idx) => idx !== i)); }
   function clearAll() { setItems([]); }
+
+  // 把右侧算出来的汇总 BOM 导出为 CSV (前端实时数据,直接 Blob 下载)
+  function exportBom() {
+    if (bom.length === 0) return;
+    const catLabel = (c?: string) =>
+      c === 'raw' ? t('cat.raw') : c === 'packaging' ? t('cat.packaging')
+      : c === 'sauce' ? t('cat.sauce') : c === 'other' ? t('cat.other') : (c || '');
+    const esc = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const headers = ['role', 'priority', 'category', 'item_code', 'item_name', 'qty', 'uom', 'shared'];
+    const rows = bom.map((r) => [
+      r.priority === 0 ? t('lbl.main') : t('lbl.sub'),
+      r.priority,
+      catLabel(r.category),
+      r.item_code,
+      r.item_name,
+      Math.round(r.qty * 1000) / 1000,
+      r.uom || '',
+      r.is_shared ? t('lbl.shared') : '',
+    ]);
+    const csv = '﻿' + [headers, ...rows].map((row) => row.map(esc).join(',')).join('\n') + '\n';
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `order_bom_${Date.now()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
 
   const totalQty = items.reduce((s, it) => s + (it.qty || 0), 0);
 
@@ -98,19 +116,6 @@ export default function OrdersPage() {
 
         {/* 添加 */}
         <div className="space-y-3 mb-6">
-          <div>
-            <label className="label">{t('order.add_product')}</label>
-            <select
-              className="input mt-1"
-              value=""
-              onChange={(e) => { const v = parseInt(e.target.value); if (v) addProduct(v); e.target.value = ''; }}
-            >
-              <option value="">{t('order.pick_product')}</option>
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>{localizedName(p, lang)} ({p.code})</option>
-              ))}
-            </select>
-          </div>
           <div>
             <label className="label">{t('order.add_combo')}</label>
             <select
@@ -251,7 +256,14 @@ export default function OrdersPage() {
             <Sigma size={20} className="text-brand-500" /> {t('order.bom_title')}
             {loading && <span className="text-xs text-slate-400 font-normal">{t('order.computing')}</span>}
           </h2>
-          <span className="text-xs text-slate-400">{bom.length} {t('order.lines_count')}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-slate-400">{bom.length} {t('order.lines_count')}</span>
+            {bom.length > 0 && (
+              <button className="btn-ghost !py-1 !px-2" onClick={exportBom} title={t('btn.export')}>
+                <Download size={14} /> {t('btn.export')}
+              </button>
+            )}
+          </div>
         </header>
 
         {items.length === 0 ? (

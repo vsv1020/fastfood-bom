@@ -53,6 +53,20 @@ export function FolderTree({
   // 默认全部展开:只记录被显式折叠的 folder,新建的 folder 自动展开
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+
+  // 导出:scope = 'all' 全部 / 'ungrouped' 未归类 / 数字 = 该文件夹及子文件夹
+  function doExport(scope: 'all' | 'ungrouped' | number) {
+    let url = exportHref;
+    if (scope === 'ungrouped') url += '?folder_id=ungrouped';
+    else if (scope !== 'all') url += `?folder_id=${scope}`;
+    const a = document.createElement('a');
+    a.href = url;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setExportOpen(false);
+  }
 
   const childFolders = (pid: number | null) => folders.filter((f) => f.parent_id === pid);
   const itemsIn = (fid: number | null) => items.filter((i) => i.folder_id === fid);
@@ -177,7 +191,7 @@ export function FolderTree({
   return (
     <>
       <header className={
-        'p-3 border-b flex items-center gap-2 ' +
+        'relative p-3 border-b flex items-center gap-2 ' +
         (checked.size > 0 ? 'border-brand-100 bg-brand-50/70' : 'border-slate-100')
       }>
         <input
@@ -204,15 +218,46 @@ export function FolderTree({
               <div className="text-sm font-semibold text-slate-900">{title}</div>
               <div className="text-[11px] text-slate-500">{items.length} {t('meta.n_units')}</div>
             </div>
-            <a className="btn-ghost !py-1 !px-2 ml-auto" href={exportHref} download title={t('btn.export')}>
+            <button className="btn-ghost !py-1 !px-2 ml-auto" onClick={() => setExportOpen((v) => !v)} title={t('btn.export')}>
               <Download size={14} />
-            </a>
+            </button>
             <button className="btn-ghost !py-1 !px-2" onClick={() => newFolder(null)} title={t('folder.new')}>
               <FolderPlus size={14} />
             </button>
             <button className="btn-primary !py-1 !px-2" onClick={() => onNewItem(null)}>
               <Plus size={14} /> {t('btn.new')}
             </button>
+            {exportOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />
+                <div className="absolute right-2 top-full mt-1 z-20 w-56 bg-white rounded-lg shadow-lg border border-slate-200 py-1 max-h-72 overflow-y-auto">
+                  <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-slate-400">{t('btn.export')}</div>
+                  <button
+                    className="block w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                    onClick={() => doExport('all')}
+                  >
+                    {t('export.all')}
+                  </button>
+                  {flattenFolders(folders).map((f) => (
+                    <button
+                      key={f.id}
+                      className="block w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 truncate"
+                      onClick={() => doExport(f.id)}
+                    >
+                      📁 {f.label}
+                    </button>
+                  ))}
+                  {itemsIn(null).length > 0 && (
+                    <button
+                      className="block w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                      onClick={() => doExport('ungrouped')}
+                    >
+                      {t('folder.ungrouped')}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </>
         )}
       </header>
