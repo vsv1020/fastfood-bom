@@ -1,6 +1,6 @@
 import type {
   Material, Product, Combo, ComboBom, Channel, Category, BomRow,
-  SharedBomGroup, SharedBomLine,
+  SharedBomGroup, SharedBomLine, Folder,
 } from './types';
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
@@ -79,6 +79,16 @@ export const api = {
     http<{ ok: true }>(`/api/combos/${id}`, { method: 'DELETE' }),
   comboBom: (id: number, channel: Channel) =>
     http<ComboBom>(`/api/combos/${id}/bom?channel=${channel}`),
+
+  // folders (文件夹树:kind = product | combo)
+  listFolders: (kind: 'product' | 'combo') =>
+    http<Folder[]>(`/api/folders?kind=${kind}`),
+  createFolder: (f: { kind: 'product' | 'combo'; name: string; parent_id?: number | null }) =>
+    http<Folder>('/api/folders', { method: 'POST', body: JSON.stringify(f) }),
+  updateFolder: (id: number, f: { name?: string; parent_id?: number | null }) =>
+    http<Folder>(`/api/folders/${id}`, { method: 'PUT', body: JSON.stringify(f) }),
+  deleteFolder: (id: number) =>
+    http<{ ok: true }>(`/api/folders/${id}`, { method: 'DELETE' }),
 
   // erp
   getErpSettings: () => http<{

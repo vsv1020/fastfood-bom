@@ -5,24 +5,26 @@ import {
   useDraggable, useDroppable,
   PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
-import { Plus, Save, Trash2, Search, GripVertical, X, Shuffle, Download, Copy } from 'lucide-react';
+import { Save, Trash2, Search, GripVertical, X, Shuffle, Copy } from 'lucide-react';
 import { api } from '../api';
-import type { Material, Product, ProductLine, ProductLineSubstitute } from '../types';
+import type { Material, Product, ProductLine, ProductLineSubstitute, Folder } from '../types';
 import { useLang, useT, localizedName } from '../i18n';
+import { FolderTree, flattenFolders, type TreeItemData } from '../FolderTree';
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
   const [selectedId, setSelectedId] = useState<number | 'new' | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [newItemFolderId, setNewItemFolderId] = useState<number | null>(null);
   const [pendingDrop, setPendingDrop] = useState<{ material: Material; ts: number } | null>(null);
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const { lang } = useLang();
   const t = useT();
 
   async function load() {
-    setLoading(true);
-    setProducts(await api.listProducts());
-    setLoading(false);
+    const [ps, fs] = await Promise.all([api.listProducts(), api.listFolders('product')]);
+    setProducts(ps);
+    setFolders(fs);
   }
   useEffect(() => { load(); }, []);
 
@@ -65,83 +67,30 @@ export default function ProductsPage() {
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
     <div className="h-full flex">
-      {/* 左:单品列表 */}
+      {/* 左:单品文件夹树 */}
       <aside className="w-72 shrink-0 border-r border-slate-200 bg-white flex flex-col min-h-0">
-        <header className={
-          'p-3 border-b flex items-center gap-2 ' +
-          (checked.size > 0 ? 'border-brand-100 bg-brand-50/70' : 'border-slate-100')
-        }>
-          <input
-            type="checkbox"
-            className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-300 ml-1"
-            checked={products.length > 0 && checked.size === products.length}
-            ref={(el) => { if (el) el.indeterminate = checked.size > 0 && checked.size < products.length; }}
-            onChange={() => {
-              if (checked.size === products.length) clearChecks();
-              else setChecked(new Set(products.map((p) => p.id)));
-            }}
-            title={t('btn.select_all')}
-          />
-          {checked.size > 0 ? (
-            <>
-              <span className="text-sm font-semibold text-brand-700">{t('meta.also_selected')} {checked.size}</span>
-              <button className="btn-danger !py-1 !px-2 ml-auto" onClick={bulkDelete} title={t('btn.delete')}>
-                <Trash2 size={14} /> {t('btn.delete')}
-              </button>
-              <button className="btn-ghost !py-1 !px-1.5" onClick={clearChecks} title={t('btn.cancel')}>
-                <X size={14} />
-              </button>
-            </>
-          ) : (
-            <>
-              <div className="ml-1">
-                <div className="text-sm font-semibold text-slate-900">{t('title.bom_units')}</div>
-                <div className="text-[11px] text-slate-500">{products.length} {t('meta.n_units')}</div>
-              </div>
-              <a className="btn-ghost !py-1 !px-2 ml-auto" href="/api/export/products.csv" download title={t('btn.export')}>
-                <Download size={14} />
-              </a>
-              <button className="btn-primary !py-1 !px-2" onClick={() => setSelectedId('new')}>
-                <Plus size={14} /> {t('btn.new')}
-              </button>
-            </>
-          )}
-        </header>
-        <div className="flex-1 overflow-y-auto">
-          {loading && <div className="p-4 text-sm text-slate-400">…</div>}
-          {!loading && products.length === 0 && (
-            <div className="p-6 text-center text-sm text-slate-400">
-              {t('empty.no_products')}<br />
-              <span className="text-xs">{t('empty.click_new_to_start')}</span>
-            </div>
-          )}
-          {products.map((p) => (
-            <div
-              key={p.id}
-              className={
-                'group flex items-center gap-2 px-4 py-3 border-b border-slate-100 hover:bg-slate-50 cursor-pointer ' +
-                (checked.has(p.id) ? 'bg-brand-50/40 ' : '') +
-                (selectedId === p.id ? 'bg-brand-50/60 border-l-2 border-l-brand-500' : '')
-              }
-              onClick={() => setSelectedId(p.id)}
-            >
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-300 shrink-0"
-                checked={checked.has(p.id)}
-                onClick={(e) => e.stopPropagation()}
-                onChange={() => toggleCheck(p.id)}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-slate-900 truncate">{localizedName(p, lang)}</div>
-                <div className="flex items-center justify-between mt-0.5">
-                  <span className="text-[11px] font-mono text-slate-500">{p.code}</span>
-                  <span className="text-[11px] text-slate-400">{p.line_count} {t('meta.n_rows')}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+        <FolderTree
+          kind="product"
+          title={t('title.bom_units')}
+          exportHref="/api/export/products.csv"
+          folders={folders}
+          items={products.map((p): TreeItemData => ({
+            id: p.id,
+            folder_id: p.folder_id ?? null,
+            name: localizedName(p, lang),
+            code: p.code,
+            meta: `${p.line_count ?? 0} ${t('meta.n_rows')}`,
+          }))}
+          selectedItemId={typeof selectedId === 'number' ? selectedId : null}
+          checked={checked}
+          onSelectItem={(id) => setSelectedId(id)}
+          onToggleCheck={toggleCheck}
+          onCheckAll={() => setChecked(new Set(products.map((p) => p.id)))}
+          onClearChecks={clearChecks}
+          onBulkDelete={bulkDelete}
+          onNewItem={(folderId) => { setNewItemFolderId(folderId); setSelectedId('new'); }}
+          onReload={load}
+        />
       </aside>
 
       {/* 中:编辑器 */}
@@ -150,8 +99,10 @@ export default function ProductsPage() {
           <EmptyState text={t('empty.select_or_new_product')} />
         ) : (
           <ProductEditor
-            key={selectedId === 'new' ? 'new' : selectedId}
+            key={selectedId === 'new' ? `new-${newItemFolderId ?? ''}` : selectedId}
             productId={selectedId === 'new' ? null : selectedId}
+            presetFolderId={newItemFolderId}
+            folders={folders}
             pendingDrop={pendingDrop}
             onConsumed={() => setPendingDrop(null)}
             onSaved={(p) => { setSelectedId(p.id); load(); }}
@@ -206,9 +157,11 @@ function EmptyState({ text }: { text: string }) {
 const PRODUCT_DROP_ID = 'product-bom-drop';
 
 function ProductEditor({
-  productId, pendingDrop, onConsumed, onSaved, onDeleted,
+  productId, presetFolderId, folders, pendingDrop, onConsumed, onSaved, onDeleted,
 }: {
   productId: number | null;
+  presetFolderId: number | null;
+  folders: Folder[];
   pendingDrop: { material: Material; ts: number } | null;
   onConsumed: () => void;
   onSaved: (p: Product) => void;
@@ -219,6 +172,7 @@ function ProductEditor({
   const [nameEn, setNameEn] = useState('');
   const [nameTh, setNameTh] = useState('');
   const [description, setDescription] = useState('');
+  const [folderId, setFolderId] = useState<number | null>(presetFolderId);
   const [lines, setLines] = useState<ProductLine[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -229,13 +183,15 @@ function ProductEditor({
 
   useEffect(() => {
     if (productId == null) {
-      setCode(''); setName(''); setNameEn(''); setNameTh(''); setDescription(''); setLines([]); setErr(null);
+      setCode(''); setName(''); setNameEn(''); setNameTh(''); setDescription('');
+      setFolderId(presetFolderId); setLines([]); setErr(null);
       return;
     }
     api.getProduct(productId).then((p) => {
       setCode(p.code); setName(p.name);
       setNameEn(p.name_en || ''); setNameTh(p.name_th || '');
       setDescription(p.description || '');
+      setFolderId(p.folder_id ?? null);
       setLines(p.lines || []); setErr(null);
     });
   }, [productId]);
@@ -267,6 +223,7 @@ function ProductEditor({
         name_en: nameEn.trim() || null,
         name_th: nameTh.trim() || null,
         description: description.trim() || null,
+        folder_id: folderId,
         lines: lines.map((l) => ({ material_code: l.material_code, qty: l.qty, substitutes: l.substitutes })),
       };
       if (code.trim()) payload.code = code.trim();
@@ -295,6 +252,7 @@ function ProductEditor({
         name_en: nameEn.trim() || null,
         name_th: nameTh.trim() || null,
         description: description.trim() || null,
+        folder_id: folderId,
         lines: lines.map((l) => ({ material_code: l.material_code, qty: l.qty, substitutes: l.substitutes })),
       } as any);
       onSaved(p);
@@ -329,10 +287,22 @@ function ProductEditor({
                        onChange={(e) => setNameTh(e.target.value)} placeholder="เช่น ชีสบีฟเบอร์เกอร์" />
               </div>
             </div>
-            <div>
-              <label className="label">{t('lbl.desc')} ({t('placeholder.optional')})</label>
-              <input className="input mt-1" value={description}
-                     onChange={(e) => setDescription(e.target.value)} />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">{t('lbl.desc')} ({t('placeholder.optional')})</label>
+                <input className="input mt-1" value={description}
+                       onChange={(e) => setDescription(e.target.value)} />
+              </div>
+              <div>
+                <label className="label">{t('editor.folder')}</label>
+                <select className="input mt-1" value={folderId ?? ''}
+                        onChange={(e) => setFolderId(e.target.value === '' ? null : Number(e.target.value))}>
+                  <option value="">{t('folder.ungrouped')}</option>
+                  {flattenFolders(folders).map((f) => (
+                    <option key={f.id} value={f.id}>{f.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
           <div className="flex gap-2 mt-7">

@@ -78,6 +78,18 @@ const D: Dict = {
   'editor.delete_row_title': { zh: '删除整行 (主+替换品)',  en: 'Delete row (main + subs)', th: 'ลบทั้งแถว' },
   'editor.remove_sub':       { zh: '移除该替换品',         en: 'Remove substitute',     th: 'นำสินค้าทดแทนออก' },
   'editor.copy_suffix':      { zh: '副本',                 en: '(copy)',                th: '(สำเนา)' },
+  'editor.folder':           { zh: '所属文件夹',           en: 'Folder',                th: 'โฟลเดอร์' },
+
+  // 文件夹树
+  'folder.ungrouped':        { zh: '未归类',               en: 'Ungrouped',             th: 'ไม่จัดกลุ่ม' },
+  'folder.new':              { zh: '新建文件夹',           en: 'New folder',            th: 'โฟลเดอร์ใหม่' },
+  'folder.new_sub':          { zh: '新建子文件夹',         en: 'New subfolder',         th: 'โฟลเดอร์ย่อยใหม่' },
+  'folder.new_item_here':    { zh: '在此新建',             en: 'New item here',         th: 'สร้างที่นี่' },
+  'folder.rename':           { zh: '重命名',               en: 'Rename',                th: 'เปลี่ยนชื่อ' },
+  'folder.delete':           { zh: '删除文件夹',           en: 'Delete folder',         th: 'ลบโฟลเดอร์' },
+  'folder.name_prompt':      { zh: '文件夹名称',           en: 'Folder name',           th: 'ชื่อโฟลเดอร์' },
+  'folder.rename_prompt':    { zh: '新名称',               en: 'New name',              th: 'ชื่อใหม่' },
+  'folder.delete_confirm':   { zh: '删除该文件夹? 子文件夹会一起删,里面的条目会退回「未归类」(不会删除条目本身)', en: 'Delete this folder? Subfolders are deleted too; items move back to Ungrouped (items themselves are kept).', th: 'ลบโฟลเดอร์นี้? โฟลเดอร์ย่อยจะถูกลบด้วย รายการจะย้ายไปยังไม่จัดกลุ่ม' },
   'editor.bom_priority':     { zh: '优先级',               en: 'Priority',              th: 'ลำดับ' },
   'editor.qty_hint':         { zh: '💡 提示: 从右侧"原材料库"面板拖动物料到上面区域,系统会自动按编码合并并 +1。数量、删除可在每行直接编辑。', en: '💡 Tip: Drag materials from the right panel into the area above. Same code auto-merges +1. Edit qty / delete inline.', th: '💡 ลากวัตถุดิบจากด้านขวามาด้านบน; รหัสเดียวกันรวมอัตโนมัติ +1' },
   // panel

@@ -31,6 +31,14 @@ export interface ProductLine {
   substitutes?: ProductLineSubstitute[];
 }
 
+export interface Folder {
+  id: number;
+  kind: 'product' | 'combo';
+  name: string;
+  parent_id: number | null;
+  created_at: string;
+}
+
 export interface Product {
   id: number;
   code: string;
@@ -38,6 +46,7 @@ export interface Product {
   name_en?: string | null;
   name_th?: string | null;
   description: string | null;
+  folder_id?: number | null;
   created_at: string;
   line_count?: number;
   lines?: ProductLine[];
@@ -74,6 +83,7 @@ export interface Combo {
   packaging_dinein_codes:  PackEntry[];
   sauce_takeout_codes:     PackEntry[];
   sauce_dinein_codes:      PackEntry[];
+  folder_id?: number | null;
   created_at: string;
   line_count?: number;
   lines?: ComboLine[];

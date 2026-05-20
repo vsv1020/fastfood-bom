@@ -53,13 +53,13 @@ productsRouter.get('/:id', (req, res) => {
 });
 
 productsRouter.post('/', (req, res) => {
-  const { code, name, name_en, name_th, description, lines = [] } = req.body || {};
+  const { code, name, name_en, name_th, description, folder_id, lines = [] } = req.body || {};
   if (!name) return res.status(400).json({ error: 'name required' });
   const finalCode = (code && code.trim()) ? code.trim() : nextProductCode();
   try {
     const tx = db.transaction(() => {
-      const info = db.prepare('INSERT INTO products(code, name, name_en, name_th, description) VALUES (?, ?, ?, ?, ?)')
-        .run(finalCode, name, name_en || null, name_th || null, description || null);
+      const info = db.prepare('INSERT INTO products(code, name, name_en, name_th, description, folder_id) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(finalCode, name, name_en || null, name_th || null, description || null, folder_id ?? null);
       const insLine = db.prepare('INSERT INTO product_lines(product_id, material_code, qty) VALUES (?, ?, ?)');
       const insSub  = db.prepare('INSERT INTO product_line_substitutes(parent_line_id, material_code, qty, priority) VALUES (?, ?, ?, ?)');
       for (const ln of lines) {
@@ -81,7 +81,7 @@ productsRouter.post('/', (req, res) => {
 
 productsRouter.put('/:id', (req, res) => {
   const id = Number(req.params.id);
-  const { code, name, name_en, name_th, description, lines } = req.body || {};
+  const { code, name, name_en, name_th, description, folder_id, lines } = req.body || {};
   const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'not found' });
   try {
@@ -91,13 +91,16 @@ productsRouter.put('/:id', (req, res) => {
           name        = COALESCE(?, name),
           name_en     = ?,
           name_th     = ?,
-          description = ?
+          description = ?,
+          folder_id   = ?
         WHERE id = ?`)
         .run(
           code ?? null, name ?? null,
           name_en === undefined ? existing.name_en : (name_en || null),
           name_th === undefined ? existing.name_th : (name_th || null),
-          description ?? null, id
+          description ?? null,
+          folder_id === undefined ? existing.folder_id : (folder_id ?? null),
+          id
         );
       if (Array.isArray(lines)) {
         // DELETE 触发 FK CASCADE,会一并删 product_line_substitutes

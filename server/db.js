@@ -125,6 +125,17 @@ CREATE TABLE IF NOT EXISTS shared_bom_line_substitutes (
   priority        INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_sbls_parent ON shared_bom_line_substitutes(parent_line_id);
+
+-- 文件夹树:给 BOM 单元 / 组合分类归档,任意层级嵌套
+-- parent_id 自引用,ON DELETE CASCADE = 删父文件夹连子文件夹一起删
+CREATE TABLE IF NOT EXISTS folders (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind        TEXT NOT NULL,                              -- 'product' | 'combo'
+  name        TEXT NOT NULL,
+  parent_id   INTEGER REFERENCES folders(id) ON DELETE CASCADE,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_folders_kind ON folders(kind, parent_id);
 `);
 
 // Seed 固定的 3 个组
@@ -154,6 +165,9 @@ ensureColumn('products', 'name_en', 'TEXT');
 ensureColumn('products', 'name_th', 'TEXT');
 ensureColumn('combos',   'name_en', 'TEXT');
 ensureColumn('combos',   'name_th', 'TEXT');
+// 文件夹归类: products / combos 各加一个 folder_id (NULL = 未归类)
+ensureColumn('products', 'folder_id', 'INTEGER');
+ensureColumn('combos',   'folder_id', 'INTEGER');
 
 export function getSetting(key) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
@@ -166,3 +180,22 @@ export function setSetting(key, value) {
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
   `).run(key, value);
 }
+
+// 一次性迁移:把现有未归类的 products / combos 各自归入一个「默认分类」folder
+function migrateDefaultFolders() {
+  if (getSetting('folders_migrated_v1')) return;
+  const tx = db.transaction(() => {
+    for (const kind of ['product', 'combo']) {
+      const table = kind === 'product' ? 'products' : 'combos';
+      const n = db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE folder_id IS NULL`).get().n;
+      if (n > 0) {
+        const fid = db.prepare(`INSERT INTO folders(kind, name, parent_id) VALUES (?, '默认分类', NULL)`)
+          .run(kind).lastInsertRowid;
+        db.prepare(`UPDATE ${table} SET folder_id = ? WHERE folder_id IS NULL`).run(fid);
+      }
+    }
+    setSetting('folders_migrated_v1', '1');
+  });
+  tx();
+}
+migrateDefaultFolders();
