@@ -172,6 +172,8 @@ const D: Dict = {
   'order.clear':             { zh: '清空',                 en: 'Clear',                 th: 'ล้าง' },
   'order.add_product':       { zh: '添加单品',             en: 'Add BOM unit',          th: 'เพิ่มหน่วย BOM' },
   'order.add_combo':         { zh: '添加套餐',             en: 'Add BOM set',           th: 'เพิ่มชุด BOM' },
+  'order.batch':             { zh: '批次(BOM 组合顶层文件夹)', en: 'Batch (top-level folder)', th: 'แบตช์ (โฟลเดอร์ระดับบน)' },
+  'order.all_batches':       { zh: '全部批次',             en: 'All batches',           th: 'ทุกแบตช์' },
   'order.pick_product':      { zh: '+ 选一个单品加入订单…', en: '+ Pick a BOM unit…',    th: '+ เลือกหน่วย BOM…' },
   'order.pick_combo':        { zh: '+ 选一个套餐加入订单 (默认外卖)…', en: '+ Pick a BOM set (takeout by default)…', th: '+ เลือกชุด BOM (เดลิเวอรีเริ่มต้น)…' },
   'order.items_title':       { zh: '订单项',               en: 'Order items',           th: 'รายการออเดอร์' },

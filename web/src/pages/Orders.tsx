@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2, ShoppingCart, Sigma, Truck, Store, Package, Share2, Layers, Download } from 'lucide-react';
 import { api } from '../api';
-import type { Combo, BomRow, Channel } from '../types';
+import type { Combo, BomRow, Channel, Folder } from '../types';
 import { useT, useLang, localizedName } from '../i18n';
 
 type SharedHit = {
@@ -18,6 +18,8 @@ type OrderItem =
 
 export default function OrdersPage() {
   const [combos,   setCombos]   = useState<Combo[]>([]);
+  const [folders,  setFolders]  = useState<Folder[]>([]);
+  const [folderFilter, setFolderFilter] = useState<number | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
   const [bom, setBom] = useState<BomRow[]>([]);
   const [resolved, setResolved] = useState<Awaited<ReturnType<typeof api.orderPreview>>['items']>([]);
@@ -28,6 +30,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     api.listCombos().then(setCombos);
+    api.listFolders('combo').then(setFolders);
   }, []);
 
   // 实时汇总:items 每次变化都重新算
@@ -96,6 +99,36 @@ export default function OrdersPage() {
 
   const totalQty = items.reduce((s, it) => s + (it.qty || 0), 0);
 
+  // 第一层(顶层)BOM 组合文件夹 = 批次
+  const topFolders = useMemo(() => folders.filter((f) => f.parent_id == null), [folders]);
+
+  // 选中批次后,套餐下拉只显示该顶层 folder 及其所有子文件夹里的套餐
+  const visibleCombos = useMemo(() => {
+    if (folderFilter == null) return combos;
+    const ids = new Set<number>([folderFilter]);
+    let frontier = [folderFilter];
+    while (frontier.length) {
+      const next: number[] = [];
+      for (const fid of frontier)
+        for (const f of folders)
+          if (f.parent_id === fid && !ids.has(f.id)) { ids.add(f.id); next.push(f.id); }
+      frontier = next;
+    }
+    return combos.filter((c) => c.folder_id != null && ids.has(c.folder_id));
+  }, [combos, folders, folderFilter]);
+
+  // 某 combo 所属的顶层文件夹名(批次名),用于下拉里区分重名
+  function rootFolderName(folderId: number | null | undefined): string {
+    if (folderId == null) return t('folder.ungrouped');
+    let cur = folders.find((f) => f.id === folderId);
+    while (cur && cur.parent_id != null) {
+      const p = folders.find((f) => f.id === cur!.parent_id);
+      if (!p) break;
+      cur = p;
+    }
+    return cur ? cur.name : '';
+  }
+
   return (
     <div className="h-full flex">
       {/* 左:订单项构造 */}
@@ -117,6 +150,19 @@ export default function OrdersPage() {
         {/* 添加 */}
         <div className="space-y-3 mb-6">
           <div>
+            <label className="label">{t('order.batch')}</label>
+            <select
+              className="input mt-1"
+              value={folderFilter ?? ''}
+              onChange={(e) => setFolderFilter(e.target.value === '' ? null : Number(e.target.value))}
+            >
+              <option value="">{t('order.all_batches')}</option>
+              {topFolders.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label className="label">{t('order.add_combo')}</label>
             <select
               className="input mt-1"
@@ -124,8 +170,10 @@ export default function OrdersPage() {
               onChange={(e) => { const v = parseInt(e.target.value); if (v) addCombo(v); e.target.value = ''; }}
             >
               <option value="">{t('order.pick_combo')}</option>
-              {combos.map((c) => (
-                <option key={c.id} value={c.id}>{localizedName(c, lang)} ({c.code})</option>
+              {visibleCombos.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {localizedName(c, lang)} ({c.code}) · {rootFolderName(c.folder_id)}
+                </option>
               ))}
             </select>
           </div>
