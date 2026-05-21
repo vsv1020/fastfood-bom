@@ -66,12 +66,12 @@ exportRouter.get('/products.csv', (req, res) => {
   const scope = folderScope(req.query.folder_id);
   let products;
   if (scope === null) {
-    products = db.prepare(`SELECT id, code, name, description FROM products ORDER BY code`).all();
+    products = db.prepare(`SELECT id, code, name, name_en, name_th, description FROM products ORDER BY code`).all();
   } else if (scope === 'ungrouped') {
-    products = db.prepare(`SELECT id, code, name, description FROM products WHERE folder_id IS NULL ORDER BY code`).all();
+    products = db.prepare(`SELECT id, code, name, name_en, name_th, description FROM products WHERE folder_id IS NULL ORDER BY code`).all();
   } else {
     const ph = scope.map(() => '?').join(',');
-    products = db.prepare(`SELECT id, code, name, description FROM products WHERE folder_id IN (${ph}) ORDER BY code`).all(...scope);
+    products = db.prepare(`SELECT id, code, name, name_en, name_th, description FROM products WHERE folder_id IN (${ph}) ORDER BY code`).all(...scope);
   }
   const lineStmt = db.prepare(`
     SELECT pl.id, pl.material_code, pl.qty, m.item_name, m.uom, m.category
@@ -87,14 +87,18 @@ exportRouter.get('/products.csv', (req, res) => {
     const lines = lineStmt.all(p.id);
     if (lines.length === 0) {
       out.push({
-        product_code: p.code, product_name: p.name, product_desc: p.description || '',
+        product_code: p.code, product_name: p.name,
+        product_name_en: p.name_en || '', product_name_th: p.name_th || '',
+        product_desc: p.description || '',
         line_role: '', priority: '', material_code: '', material_name: '', qty: '', uom: '', category: '',
       });
       continue;
     }
     for (const ln of lines) {
       out.push({
-        product_code: p.code, product_name: p.name, product_desc: p.description || '',
+        product_code: p.code, product_name: p.name,
+        product_name_en: p.name_en || '', product_name_th: p.name_th || '',
+        product_desc: p.description || '',
         line_role: '主', priority: 0,
         material_code: ln.material_code, material_name: ln.item_name || '',
         qty: ln.qty, uom: ln.uom || '', category: ln.category || '',
@@ -102,7 +106,9 @@ exportRouter.get('/products.csv', (req, res) => {
       const subs = subStmt.all(ln.id);
       for (const s of subs) {
         out.push({
-          product_code: p.code, product_name: p.name, product_desc: p.description || '',
+          product_code: p.code, product_name: p.name,
+        product_name_en: p.name_en || '', product_name_th: p.name_th || '',
+        product_desc: p.description || '',
           line_role: '替换', priority: s.priority,
           material_code: s.material_code, material_name: s.item_name || '',
           qty: s.qty, uom: s.uom || '', category: s.category || '',
@@ -111,7 +117,8 @@ exportRouter.get('/products.csv', (req, res) => {
     }
   }
   const csv = toCSV(
-    ['product_code', 'product_name', 'product_desc', 'line_role', 'priority',
+    ['product_code', 'product_name', 'product_name_en', 'product_name_th', 'product_desc',
+     'line_role', 'priority',
      'material_code', 'material_name', 'qty', 'uom', 'category'],
     out
   );
@@ -132,12 +139,12 @@ exportRouter.get('/combos.csv', (req, res) => {
     combos = db.prepare(`SELECT * FROM combos WHERE folder_id IN (${ph}) ORDER BY code`).all(...scope);
   }
   const lineStmt = db.prepare(`
-    SELECT cl.id, cl.product_id, cl.qty, p.code, p.name
+    SELECT cl.id, cl.product_id, cl.qty, p.code, p.name, p.name_en, p.name_th
     FROM combo_lines cl JOIN products p ON p.id = cl.product_id
     WHERE cl.combo_id = ? ORDER BY cl.id
   `);
   const subStmt = db.prepare(`
-    SELECT cs.product_id, cs.qty, cs.priority, p.code, p.name
+    SELECT cs.product_id, cs.qty, cs.priority, p.code, p.name, p.name_en, p.name_th
     FROM combo_line_substitutes cs JOIN products p ON p.id = cs.product_id
     WHERE cs.parent_line_id = ? ORDER BY cs.priority, cs.id
   `);
@@ -156,8 +163,11 @@ exportRouter.get('/combos.csv', (req, res) => {
     const sauceDi = fmtEntries(parseEntries(c.sauce_dinein_codes));
     if (lines.length === 0) {
       out.push({
-        combo_code: c.code, combo_name: c.name, combo_desc: c.description || '',
-        line_role: '', priority: '', child_code: '', child_name: '', qty: '',
+        combo_code: c.code, combo_name: c.name,
+        combo_name_en: c.name_en || '', combo_name_th: c.name_th || '',
+        combo_desc: c.description || '',
+        line_role: '', priority: '',
+        child_code: '', child_name: '', child_name_en: '', child_name_th: '', qty: '', uom: '',
         packaging_takeout: pkgTo, packaging_dinein: pkgDi,
         sauce_takeout: sauceTo, sauce_dinein: sauceDi,
       });
@@ -166,9 +176,13 @@ exportRouter.get('/combos.csv', (req, res) => {
     let firstRow = true;
     for (const ln of lines) {
       out.push({
-        combo_code: c.code, combo_name: c.name, combo_desc: c.description || '',
+        combo_code: c.code, combo_name: c.name,
+        combo_name_en: c.name_en || '', combo_name_th: c.name_th || '',
+        combo_desc: c.description || '',
         line_role: '主', priority: 0,
-        child_code: ln.code, child_name: ln.name, qty: ln.qty,
+        child_code: ln.code, child_name: ln.name,
+        child_name_en: ln.name_en || '', child_name_th: ln.name_th || '',
+        qty: ln.qty, uom: '份',
         // 把套餐级配置只在主单品的第一行显示一次
         packaging_takeout: firstRow ? pkgTo : '',
         packaging_dinein: firstRow ? pkgDi : '',
@@ -178,17 +192,22 @@ exportRouter.get('/combos.csv', (req, res) => {
       firstRow = false;
       for (const s of subStmt.all(ln.id)) {
         out.push({
-          combo_code: c.code, combo_name: c.name, combo_desc: c.description || '',
+          combo_code: c.code, combo_name: c.name,
+        combo_name_en: c.name_en || '', combo_name_th: c.name_th || '',
+        combo_desc: c.description || '',
           line_role: '替换', priority: s.priority,
-          child_code: s.code, child_name: s.name, qty: s.qty,
+          child_code: s.code, child_name: s.name,
+          child_name_en: s.name_en || '', child_name_th: s.name_th || '',
+          qty: s.qty, uom: '份',
           packaging_takeout: '', packaging_dinein: '', sauce_takeout: '', sauce_dinein: '',
         });
       }
     }
   }
   const csv = toCSV(
-    ['combo_code', 'combo_name', 'combo_desc', 'line_role', 'priority',
-     'child_code', 'child_name', 'qty',
+    ['combo_code', 'combo_name', 'combo_name_en', 'combo_name_th', 'combo_desc',
+     'line_role', 'priority',
+     'child_code', 'child_name', 'child_name_en', 'child_name_th', 'qty', 'uom',
      'packaging_takeout', 'packaging_dinein', 'sauce_takeout', 'sauce_dinein'],
     out
   );
