@@ -9,21 +9,24 @@ materialsRouter.get('/', (req, res) => {
   const params = [];
   if (category) { where.push('category = ?'); params.push(category); }
   if (channel)  { where.push('channel  = ?'); params.push(channel); }
-  if (q)        { where.push('(item_code LIKE ? OR item_name LIKE ?)'); params.push(`%${q}%`, `%${q}%`); }
+  if (q)        {
+    where.push('(item_code LIKE ? OR item_name LIKE ? OR name_en LIKE ? OR name_th LIKE ?)');
+    params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+  }
   const sql = `SELECT * FROM materials ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY category, item_name`;
   res.json(db.prepare(sql).all(...params));
 });
 
 materialsRouter.post('/', (req, res) => {
-  const { item_code, item_name, uom, category = 'raw', channel = null, source = 'manual' } = req.body || {};
+  const { item_code, item_name, name_en, name_th, uom, category = 'raw', channel = null, source = 'manual' } = req.body || {};
   if (!item_code || !item_name) return res.status(400).json({ error: 'item_code and item_name required' });
   if (!['raw', 'packaging', 'sauce', 'other'].includes(category)) return res.status(400).json({ error: 'invalid category' });
   if (channel && !['takeout', 'dinein'].includes(channel)) return res.status(400).json({ error: 'invalid channel' });
   try {
     db.prepare(
-      `INSERT INTO materials(item_code, item_name, uom, category, channel, source)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(item_code, item_name, uom || null, category, channel, source);
+      `INSERT INTO materials(item_code, item_name, name_en, name_th, uom, category, channel, source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(item_code, item_name, name_en || null, name_th || null, uom || null, category, channel, source);
     res.json(db.prepare('SELECT * FROM materials WHERE item_code = ?').get(item_code));
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -32,12 +35,14 @@ materialsRouter.post('/', (req, res) => {
 
 materialsRouter.put('/:item_code', (req, res) => {
   const { item_code } = req.params;
-  const { item_name, uom, category, channel } = req.body || {};
+  const { item_name, name_en, name_th, uom, category, channel } = req.body || {};
   const existing = db.prepare('SELECT * FROM materials WHERE item_code = ?').get(item_code);
   if (!existing) return res.status(404).json({ error: 'not found' });
   db.prepare(
     `UPDATE materials SET
        item_name = COALESCE(?, item_name),
+       name_en   = ?,
+       name_th   = ?,
        uom       = COALESCE(?, uom),
        category  = COALESCE(?, category),
        channel   = ?,
@@ -45,6 +50,8 @@ materialsRouter.put('/:item_code', (req, res) => {
      WHERE item_code = ?`
   ).run(
     item_name ?? null,
+    name_en === undefined ? existing.name_en : (name_en || null),
+    name_th === undefined ? existing.name_th : (name_th || null),
     uom ?? null,
     category ?? null,
     channel === undefined ? existing.channel : channel,

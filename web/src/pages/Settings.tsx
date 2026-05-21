@@ -55,12 +55,10 @@ export default function SettingsPage() {
     setSyncing(true); setMsg(null);
     try {
       const r = await api.syncErp();
-      const parts = [`写入 ${r.count} 条`, `名称字段=${r.name_field}`];
+      const parts = [`写入 ${r.count} 条`];
+      if (r.custom_fields_used) parts.push('中/英/泰三语名称已同步');
       if (r.whitelist_used) parts.push(`白名单=${r.whitelist_size}`);
-      if (!r.name_field_used && r.name_field_requested !== 'item_name') {
-        parts.push(`(ERP 未返回 ${r.name_field_requested},退回 item_name)`);
-      }
-      if (r.name_missing > 0) parts.push(`${r.name_missing} 条缺中文名`);
+      if (r.name_missing > 0) parts.push(`${r.name_missing} 条缺名称`);
       if (r.strict_mode) {
         parts.push(`严格模式: 清理 ${r.strict_purged} 条`);
         if (r.strict_blocked.length > 0) {

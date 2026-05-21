@@ -8,7 +8,7 @@ import {
 import { Save, Trash2, Search, GripVertical, X, Shuffle, Copy } from 'lucide-react';
 import { api } from '../api';
 import type { Material, Product, ProductLine, ProductLineSubstitute, Folder } from '../types';
-import { useLang, useT, localizedName } from '../i18n';
+import { useLang, useT, localizedName, materialName } from '../i18n';
 import { FolderTree, flattenFolders, type TreeItemData } from '../FolderTree';
 
 export default function ProductsPage() {
@@ -129,6 +129,7 @@ export default function ProductsPage() {
 }
 
 function MaterialDragPreview({ material }: { material: Material }) {
+  const { lang } = useLang();
   return (
     <div
       className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white shadow-xl border border-brand-300 w-72 cursor-grabbing"
@@ -136,7 +137,7 @@ function MaterialDragPreview({ material }: { material: Material }) {
     >
       <GripVertical size={14} className="text-brand-400" />
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-slate-900 truncate">{material.item_name}</div>
+        <div className="text-sm font-medium text-slate-900 truncate">{materialName(material, lang)}</div>
         <div className="font-mono text-[10px] text-slate-500 truncate">{material.item_code}</div>
       </div>
       <span className="text-[10px] text-slate-400">{material.uom}</span>
@@ -342,6 +343,7 @@ function ProductBomDropZone({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: PRODUCT_DROP_ID });
   const t = useT();
+  const { lang } = useLang();
 
   function updateLine(i: number, patch: Partial<ProductLine>) {
     const next = [...lines];
@@ -410,7 +412,7 @@ function ProductBomDropZone({
                     <span className="chip bg-brand-50 text-brand-700 border border-brand-100">{t('lbl.main')}</span>
                   </td>
                   <td className="py-2 font-mono text-xs text-slate-600">{l.material_code}</td>
-                  <td className="py-2 font-medium">{l.item_name}</td>
+                  <td className="py-2 font-medium">{materialName(l, lang)}</td>
                   <td className="py-2">
                     <input
                       type="number" step="0.01" min="0"
@@ -440,7 +442,7 @@ function ProductBomDropZone({
                       <Shuffle size={11} className="inline mr-1 -mt-0.5 text-amber-500" />
                       {s.material_code}
                     </td>
-                    <td className="py-1.5 text-slate-700">{s.item_name}</td>
+                    <td className="py-1.5 text-slate-700">{materialName(s, lang)}</td>
                     <td className="py-1.5">
                       <input
                         type="number" step="0.01" min="0"
@@ -474,7 +476,7 @@ function ProductBomDropZone({
                       <option value="">{t('editor.add_sub')}</option>
                       {subOpts.map((m) => (
                         <option key={m.item_code} value={m.item_code}>
-                          {m.item_name.split('|')[0].trim()} ({m.item_code})
+                          {materialName(m, lang).split('|')[0].trim()} ({m.item_code})
                         </option>
                       ))}
                     </select>
@@ -538,6 +540,7 @@ export function MaterialDragPanel({
 function DraggableMaterial({ material, onAdd }: { material: Material; onAdd?: () => void }) {
   const id = `mat-${material.item_code}`;
   const t = useT();
+  const { lang } = useLang();
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id, data: { material },
   });
@@ -556,7 +559,7 @@ function DraggableMaterial({ material, onAdd }: { material: Material; onAdd?: ()
     >
       <GripVertical size={14} className="text-slate-300 group-hover:text-brand-400" />
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-slate-800 truncate">{material.item_name}</div>
+        <div className="text-sm font-medium text-slate-800 truncate">{materialName(material, lang)}</div>
         <div className="font-mono text-[10px] text-slate-400 truncate">{material.item_code}</div>
       </div>
       <span className="text-[10px] text-slate-400">{material.uom}</span>

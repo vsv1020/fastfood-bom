@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api';
 import type { Combo, ComboLine, ComboLineSubstitute, Product, Material, ComboBom, Channel, PackEntry, Folder } from '../types';
-import { useLang, useT, localizedName } from '../i18n';
+import { useLang, useT, localizedName, materialName } from '../i18n';
 import { FolderTree, flattenFolders, type TreeItemData } from '../FolderTree';
 
 export default function CombosPage() {
@@ -75,6 +75,7 @@ export default function CombosPage() {
           kind="combo"
           title={t('title.bom_sets')}
           exportHref="/api/export/combos.csv"
+          extraExport={{ label: t('export.final_bom'), href: '/api/export/combo-bom.csv' }}
           folders={folders}
           items={combos.map((c): TreeItemData => ({
             id: c.id,
@@ -426,6 +427,7 @@ function MaterialMultiPicker({
   onChange: (v: PackEntry[]) => void;
 }) {
   const t = useT();
+  const { lang } = useLang();
   const byCode = new Map(options.map((o) => [o.item_code, o]));
   const remaining = options.filter((o) => !value.some((e) => e.code === o.item_code));
   return (
@@ -436,7 +438,7 @@ function MaterialMultiPicker({
       <div className="rounded-lg border border-slate-200 bg-white p-1.5 flex flex-wrap gap-1.5 min-h-[36px]">
         {value.map((entry, idx) => {
           const m = byCode.get(entry.code);
-          const name = m ? m.item_name.split('|')[0].trim() : entry.code;
+          const name = m ? materialName(m, lang).split('|')[0].trim() : entry.code;
           const tagClass = m?.channel === 'takeout' ? 'chip-pkg-to'
                           : m?.channel === 'dinein' ? 'chip-pkg-di'
                           : 'chip bg-slate-100 text-slate-600';
@@ -482,7 +484,7 @@ function MaterialMultiPicker({
               const tag = o.channel === 'takeout' ? `[${t('chan.takeout')}]` : o.channel === 'dinein' ? `[${t('chan.dinein')}]` : `[${t('chan.generic')}]`;
               return (
                 <option key={o.item_code} value={o.item_code}>
-                  {tag} {o.item_name.split('|')[0].trim()} ({o.item_code})
+                  {tag} {materialName(o, lang).split('|')[0].trim()} ({o.item_code})
                 </option>
               );
             })}
@@ -655,6 +657,7 @@ function BomPreview({
   unsaved: boolean;
 }) {
   const t = useT();
+  const { lang } = useLang();
   return (
     <div className="card p-5">
       <div className="flex items-center justify-between mb-4">
@@ -717,7 +720,7 @@ function BomPreview({
                   {r.category === 'raw'       && <span className="chip-raw">{t('cat.raw')}</span>}
                 </td>
                 <td className="py-1.5 font-mono text-xs text-slate-600">{r.item_code}</td>
-                <td className="py-1.5 font-medium">{r.item_name}</td>
+                <td className="py-1.5 font-medium">{materialName(r, lang)}</td>
                 <td className="py-1.5 text-right tabular-nums">{round(r.qty)}</td>
                 <td className="py-1.5 text-slate-500">{r.uom || '—'}</td>
               </tr>

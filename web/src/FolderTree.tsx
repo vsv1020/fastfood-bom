@@ -29,7 +29,7 @@ export function flattenFolders(
 }
 
 export function FolderTree({
-  kind, title, exportHref, folders, items,
+  kind, title, exportHref, extraExport, folders, items,
   selectedItemId, checked,
   onSelectItem, onToggleCheck, onCheckAll, onClearChecks, onBulkDelete,
   onNewItem, onReload,
@@ -37,6 +37,7 @@ export function FolderTree({
   kind: 'product' | 'combo';
   title: string;
   exportHref: string;
+  extraExport?: { label: string; href: string };
   folders: Folder[];
   items: TreeItemData[];
   selectedItemId: number | null;
@@ -56,16 +57,49 @@ export function FolderTree({
   const [exportOpen, setExportOpen] = useState(false);
 
   // 导出:scope = 'all' 全部 / 'ungrouped' 未归类 / 数字 = 该文件夹及子文件夹
-  function doExport(scope: 'all' | 'ungrouped' | number) {
-    let url = exportHref;
-    if (scope === 'ungrouped') url += '?folder_id=ungrouped';
-    else if (scope !== 'all') url += `?folder_id=${scope}`;
+  function doExport(scope: 'all' | 'ungrouped' | number, href: string = exportHref) {
+    const params = new URLSearchParams();
+    if (scope === 'ungrouped') params.set('folder_id', 'ungrouped');
+    else if (scope !== 'all') params.set('folder_id', String(scope));
+    params.set('_t', String(Date.now())); // cache-bust:每次导出都是唯一 URL,不会命中浏览器缓存
+    const url = `${href}?${params.toString()}`;
     const a = document.createElement('a');
     a.href = url;
     document.body.appendChild(a);
     a.click();
     a.remove();
     setExportOpen(false);
+  }
+
+  // 渲染一组导出选项(全部 / 各文件夹 / 未归类),指向给定的导出 href
+  function renderExportOptions(href: string) {
+    return (
+      <>
+        <button
+          className="block w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+          onClick={() => doExport('all', href)}
+        >
+          {t('export.all')}
+        </button>
+        {flattenFolders(folders).map((f) => (
+          <button
+            key={`${href}|${f.id}`}
+            className="block w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 truncate"
+            onClick={() => doExport(f.id, href)}
+          >
+            📁 {f.label}
+          </button>
+        ))}
+        {itemsIn(null).length > 0 && (
+          <button
+            className="block w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+            onClick={() => doExport('ungrouped', href)}
+          >
+            {t('folder.ungrouped')}
+          </button>
+        )}
+      </>
+    );
   }
 
   const childFolders = (pid: number | null) => folders.filter((f) => f.parent_id === pid);
@@ -232,28 +266,14 @@ export function FolderTree({
                 <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />
                 <div className="absolute right-2 top-full mt-1 z-20 w-56 bg-white rounded-lg shadow-lg border border-slate-200 py-1 max-h-72 overflow-y-auto">
                   <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-slate-400">{t('btn.export')}</div>
-                  <button
-                    className="block w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                    onClick={() => doExport('all')}
-                  >
-                    {t('export.all')}
-                  </button>
-                  {flattenFolders(folders).map((f) => (
-                    <button
-                      key={f.id}
-                      className="block w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 truncate"
-                      onClick={() => doExport(f.id)}
-                    >
-                      📁 {f.label}
-                    </button>
-                  ))}
-                  {itemsIn(null).length > 0 && (
-                    <button
-                      className="block w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                      onClick={() => doExport('ungrouped')}
-                    >
-                      {t('folder.ungrouped')}
-                    </button>
+                  {renderExportOptions(exportHref)}
+                  {extraExport && (
+                    <>
+                      <div className="px-3 py-1 mt-1 border-t border-slate-100 text-[10px] uppercase tracking-wide text-slate-400">
+                        {extraExport.label}
+                      </div>
+                      {renderExportOptions(extraExport.href)}
+                    </>
                   )}
                 </div>
               </>

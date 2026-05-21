@@ -21,6 +21,7 @@ const D: Dict = {
   'btn.cancel':     { zh: '取消',       en: 'Cancel',      th: 'ยกเลิก' },
   'btn.export':     { zh: '导出',       en: 'Export',      th: 'ส่งออก' },
   'export.all':     { zh: '导出全部',   en: 'Export all',  th: 'ส่งออกทั้งหมด' },
+  'export.final_bom': { zh: '最终 BOM · TTPOS 导入格式', en: 'Final BOM · TTPOS format', th: 'BOM สุดท้าย · รูปแบบ TTPOS' },
   'btn.edit':       { zh: '编辑',       en: 'Edit',        th: 'แก้ไข' },
   'btn.duplicate':  { zh: '复制',       en: 'Duplicate',   th: 'ทำสำเนา' },
   'btn.select_all': { zh: '全选',       en: 'Select all',  th: 'เลือกทั้งหมด' },
@@ -267,6 +268,17 @@ export function localizedName(obj: { name?: string; name_en?: string | null; nam
   if (lang === 'en' && obj.name_en) return obj.name_en;
   if (lang === 'th' && obj.name_th) return obj.name_th;
   return obj.name || obj.name_en || obj.name_th || '';
+}
+
+/** 物料按当前语言取最佳名称 (物料用 item_name 作中文主名) */
+export function materialName(
+  m: { item_name?: string; name_en?: string | null; name_th?: string | null } | null | undefined,
+  lang: Lang,
+): string {
+  if (!m) return '';
+  if (lang === 'en' && m.name_en) return m.name_en;
+  if (lang === 'th' && m.name_th) return m.name_th;
+  return m.item_name || m.name_en || m.name_th || '';
 }
 
 export const LANG_OPTIONS: { value: Lang; label: string; flag: string }[] = [

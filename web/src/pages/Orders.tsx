@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2, ShoppingCart, Sigma, Truck, Store, Package, Share2, Layers, Download } from 'lucide-react';
 import { api } from '../api';
 import type { Combo, BomRow, Channel, Folder } from '../types';
-import { useT, useLang, localizedName } from '../i18n';
+import { useT, useLang, localizedName, materialName } from '../i18n';
 
 type SharedHit = {
   group_id: number;
@@ -65,7 +65,7 @@ export default function OrdersPage() {
   function removeItem(i: number) { setItems(items.filter((_, idx) => idx !== i)); }
   function clearAll() { setItems([]); }
 
-  // 把右侧算出来的汇总 BOM 导出为 CSV (前端实时数据,直接 Blob 下载)
+  // 导出右侧算出来的汇总 BOM (按订单各套餐数量算好、所有物料求和合并的最终清单)
   function exportBom() {
     if (bom.length === 0) return;
     const catLabel = (c?: string) =>
@@ -75,15 +75,31 @@ export default function OrdersPage() {
       const s = v == null ? '' : String(v);
       return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     };
-    const headers = ['role', 'priority', 'category', 'item_code', 'item_name', 'qty', 'uom', 'shared'];
+    // product 列:用订单里涉及的套餐填。单套餐 → 该套餐名 + 文件夹;多套餐 → 名称拼接
+    const comboById = new Map(combos.map((c) => [c.id, c]));
+    const folderById = new Map(folders.map((f) => [f.id, f.name]));
+    const orderCombos = [...new Set(items.filter((i) => i.kind === 'combo').map((i) => i.id))]
+      .map((id) => comboById.get(id))
+      .filter((c): c is Combo => !!c);
+    const productName = orderCombos.map((c) => c.name_en || c.name).join(' + ');
+    const productCat = orderCombos.length === 1 && orderCombos[0].folder_id != null
+      ? (folderById.get(orderCombos[0].folder_id) || '')
+      : '';
+    // 前 8 列 = TTPOS 模板 8 列;后 3 列 = 附加信息(类别/类型/订单共享)
+    const headers = ['product_category_name_en', 'product_name_en', 'product_spec_name_en', 'processing_servings',
+      'material_name_en', 'material_code', 'material_unit_name_en', 'material_qty',
+      '类别', '类型', '订单共享'];
     const rows = bom.map((r) => [
-      r.priority === 0 ? t('lbl.main') : t('lbl.sub'),
-      r.priority,
+      productCat,    // product_category_name_en — 单套餐时 = 套餐文件夹名
+      productName,   // product_name_en — 订单里的套餐名
+      'pc',          // product_spec_name_en
+      1,             // processing_servings
+      r.name_en || r.item_name,   // material_name_en — 优先英文名
+      r.item_code,   // material_code
+      r.uom || '',   // material_unit_name_en
+      Math.round(r.qty * 1000) / 1000,  // material_qty
       catLabel(r.category),
-      r.item_code,
-      r.item_name,
-      Math.round(r.qty * 1000) / 1000,
-      r.uom || '',
+      r.priority === 0 ? t('lbl.main') : `${t('lbl.sub')} P${r.priority}`,
       r.is_shared ? t('lbl.shared') : '',
     ]);
     const csv = '﻿' + [headers, ...rows].map((row) => row.map(esc).join(',')).join('\n') + '\n';
@@ -357,7 +373,7 @@ export default function OrdersPage() {
                       {r.category === 'other'     && <span className="chip bg-slate-100 text-slate-500">{t('cat.other')}</span>}
                     </td>
                     <td className="px-4 py-1.5 font-mono text-xs text-slate-600">{r.item_code}</td>
-                    <td className="px-4 py-1.5 font-medium">{r.item_name}</td>
+                    <td className="px-4 py-1.5 font-medium">{materialName(r, lang)}</td>
                     <td className="px-4 py-1.5 text-right tabular-nums">{Math.round(r.qty * 1000) / 1000}</td>
                     <td className="px-4 py-1.5 text-slate-500">{r.uom || '—'}</td>
                   </tr>

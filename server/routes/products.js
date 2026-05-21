@@ -18,7 +18,7 @@ function loadProduct(id) {
   if (!p) return null;
   p.lines = db.prepare(`
     SELECT pl.id, pl.material_code, pl.qty,
-           m.item_name, m.uom, m.category
+           m.item_name, m.name_en, m.name_th, m.uom, m.category
     FROM product_lines pl
     LEFT JOIN materials m ON m.item_code = pl.material_code
     WHERE pl.product_id = ?
@@ -27,7 +27,7 @@ function loadProduct(id) {
   // 每条 line 挂上替换品
   const subStmt = db.prepare(`
     SELECT s.id, s.material_code, s.qty, s.priority,
-           m.item_name, m.uom, m.category
+           m.item_name, m.name_en, m.name_th, m.uom, m.category
     FROM product_line_substitutes s
     LEFT JOIN materials m ON m.item_code = s.material_code
     WHERE s.parent_line_id = ?

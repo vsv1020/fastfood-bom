@@ -3,7 +3,9 @@ export type Category = 'raw' | 'packaging' | 'sauce' | 'other';
 
 export interface Material {
   item_code: string;
-  item_name: string;
+  item_name: string;          // 中文主名
+  name_en?: string | null;
+  name_th?: string | null;
   uom: string | null;
   category: Category;
   channel: Channel | null;
@@ -17,6 +19,8 @@ export interface ProductLineSubstitute {
   qty: number;
   priority: number;
   item_name?: string;
+  name_en?: string | null;
+  name_th?: string | null;
   uom?: string | null;
   category?: Category;
 }
@@ -26,6 +30,8 @@ export interface ProductLine {
   material_code: string;
   qty: number;
   item_name?: string;
+  name_en?: string | null;
+  name_th?: string | null;
   uom?: string | null;
   category?: Category;
   substitutes?: ProductLineSubstitute[];

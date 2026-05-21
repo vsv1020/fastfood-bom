@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, RefreshCw, Search, Trash2, Pencil, X, Check, Merge, Sparkles, Split, Download } from 'lucide-react';
 import { api } from '../api';
 import type { Material, Category, Channel } from '../types';
-import { useT } from '../i18n';
+import { useT, useLang, materialName } from '../i18n';
 
 // Tab keys 不包含 'other' — 未分类的物料仅出现在「全部」tab,不占独立 tab
 type CategoryTabKey = 'all' | 'raw' | 'packaging' | 'sauce';
@@ -102,6 +102,7 @@ export default function MaterialsPage() {
   const [bulkCat, setBulkCat] = useState<Category | ''>('');
   const [bulkChan, setBulkChan] = useState<Channel | 'null' | ''>('');
   const t = useT();
+  const { lang } = useLang();
 
   // 切换 tab / 渠道筛选 / 搜索时清空选择
   useEffect(() => { setSelected(new Set()); }, [filter.category, filter.channel, q]);
@@ -138,11 +139,9 @@ export default function MaterialsPage() {
     setSyncMsg('同步中…');
     try {
       const r = await api.syncErp();
-      const parts = [`写入 ${r.count} 条原材料`, `名称字段=${r.name_field}`];
-      if (!r.name_field_used && r.name_field_requested !== 'item_name') {
-        parts.push(`(ERP 未返回 ${r.name_field_requested},已退回 item_name)`);
-      }
-      if (r.name_missing > 0) parts.push(`${r.name_missing} 条缺中文名`);
+      const parts = [`写入 ${r.count} 条原材料`];
+      if (r.custom_fields_used) parts.push('已同步中/英/泰三语名称');
+      if (r.name_missing > 0) parts.push(`${r.name_missing} 条缺名称`);
       if (r.note) parts.push(r.note);
       setSyncMsg(`同步成功: ${parts.join(' · ')}`);
       load();
@@ -464,7 +463,7 @@ export default function MaterialsPage() {
                   />
                 </td>
                 <td className="px-4 py-2.5 font-mono text-xs text-slate-700">{m.item_code}</td>
-                <td className="px-4 py-2.5 font-medium text-slate-900">{m.item_name}</td>
+                <td className="px-4 py-2.5 font-medium text-slate-900">{materialName(m, lang)}</td>
                 <td className="px-4 py-2.5">
                   <CategorySelect material={m} onChanged={load} />
                 </td>
@@ -514,6 +513,8 @@ function MaterialEditor({ initial, defaultCategory, onClose, onSaved }: {
   const isNew = !initial;
   const [code, setCode] = useState(initial?.item_code || '');
   const [name, setName] = useState(initial?.item_name || '');
+  const [nameEn, setNameEn] = useState(initial?.name_en || '');
+  const [nameTh, setNameTh] = useState(initial?.name_th || '');
   const [uom,  setUom ] = useState(initial?.uom || 'Nos');
   const [category, setCategory] = useState<Category>(initial?.category || defaultCategory);
   const [channel,  setChannel ] = useState<Channel | ''>((initial?.channel as Channel) || '');
@@ -527,6 +528,8 @@ function MaterialEditor({ initial, defaultCategory, onClose, onSaved }: {
       const payload = {
         item_code: code.trim(),
         item_name: name.trim(),
+        name_en: nameEn.trim() || null,
+        name_th: nameTh.trim() || null,
         uom: uom.trim() || null,
         category,
         channel: (category === 'raw' || category === 'other') ? null : (channel || null),
@@ -555,8 +558,18 @@ function MaterialEditor({ initial, defaultCategory, onClose, onSaved }: {
                    onChange={(e) => setCode(e.target.value)} placeholder="RM-BUN-PLAIN" />
           </div>
           <div>
-            <label className="label">{t('lbl.name')}</label>
+            <label className="label">{t('lbl.name_zh')}</label>
             <input className="input mt-1" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">{t('lbl.name_en')}</label>
+              <input className="input mt-1" value={nameEn} onChange={(e) => setNameEn(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">{t('lbl.name_th')}</label>
+              <input className="input mt-1" value={nameTh} onChange={(e) => setNameTh(e.target.value)} />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

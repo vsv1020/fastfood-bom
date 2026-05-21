@@ -118,7 +118,7 @@ export const api = {
 
   syncErp: () => http<{
     count: number; note?: string;
-    name_field: string; name_field_requested: string; name_field_used: boolean;
+    custom_fields_used: boolean;
     name_missing: number;
     whitelist_used: boolean; whitelist_size: number;
     strict_mode: boolean; strict_purged: number;

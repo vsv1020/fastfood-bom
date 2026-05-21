@@ -168,6 +168,9 @@ ensureColumn('combos',   'name_th', 'TEXT');
 // 文件夹归类: products / combos 各加一个 folder_id (NULL = 未归类)
 ensureColumn('products', 'folder_id', 'INTEGER');
 ensureColumn('combos',   'folder_id', 'INTEGER');
+// 物料三语名称: item_name 作中文主名,加英文/泰文
+ensureColumn('materials', 'name_en', 'TEXT');
+ensureColumn('materials', 'name_th', 'TEXT');
 
 export function getSetting(key) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);

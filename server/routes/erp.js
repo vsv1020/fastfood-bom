@@ -66,10 +66,11 @@ erpRouter.post('/sync', async (req, res) => {
   if (whitelist.length > 0) filterClauses.push(['item_code', 'in', whitelist]);
   const filters = JSON.stringify(filterClauses);
   const baseFields = ['item_code', 'item_name', 'stock_uom', 'item_group'];
-  const wantsCustomName = nameField && !baseFields.includes(nameField);
+  // 中文名字段(可配置) + 泰文名字段(固定 custom_item_name_th);ERP 标准 item_name 作英文名
+  const customFields = [...new Set([nameField, 'custom_item_name_th'].filter((f) => f && !baseFields.includes(f)))];
 
-  async function fetchItems(includeNameField) {
-    const fieldsArr = includeNameField ? [...baseFields, nameField] : baseFields;
+  async function fetchItems(includeCustom) {
+    const fieldsArr = includeCustom ? [...baseFields, ...customFields] : baseFields;
     const endpoint = `${url}/api/resource/Item`
       + `?filters=${encodeURIComponent(filters)}`
       + `&fields=${encodeURIComponent(JSON.stringify(fieldsArr))}`
@@ -90,14 +91,14 @@ erpRouter.post('/sync', async (req, res) => {
   }
 
   let payload;
-  let usedNameField = false;
+  let usedCustom = false;
   try {
-    if (wantsCustomName) {
+    if (customFields.length) {
       try {
         payload = await fetchItems(true);
-        usedNameField = true;
+        usedCustom = true;
       } catch (e) {
-        // 字段不存在时 Frappe 通常 417/500;降级到基础字段
+        // 自定义字段不存在时 Frappe 通常 417/500;降级到基础字段
         payload = await fetchItems(false);
       }
     } else {
@@ -116,10 +117,12 @@ erpRouter.post('/sync', async (req, res) => {
   const incomingCodes = new Set(list.map((it) => it.item_code).filter(Boolean));
 
   const upsert = db.prepare(`
-    INSERT INTO materials(item_code, item_name, uom, category, channel, source, updated_at)
-    VALUES (?, ?, ?, 'raw', NULL, 'erp', datetime('now'))
+    INSERT INTO materials(item_code, item_name, name_en, name_th, uom, category, channel, source, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'raw', NULL, 'erp', datetime('now'))
     ON CONFLICT(item_code) DO UPDATE SET
       item_name  = excluded.item_name,
+      name_en    = excluded.name_en,
+      name_th    = excluded.name_th,
       uom        = excluded.uom,
       source     = 'erp',
       updated_at = datetime('now')
@@ -129,10 +132,12 @@ erpRouter.post('/sync', async (req, res) => {
   const tx = db.transaction(() => {
     for (const it of list) {
       if (!it.item_code) continue;
-      const name = (usedNameField && it[nameField]) || it.item_name;
-      if (!name) { nameMissing++; continue; }
-      if (usedNameField && !it[nameField]) nameMissing++;
-      upsert.run(it.item_code, name, it.stock_uom || null);
+      // 中文名:优先配置的中文字段,退回 ERP item_name;英文名 = ERP 标准 item_name;泰文名 = custom_item_name_th
+      const zh = (usedCustom && it[nameField]) || it.item_name || '';
+      const en = it.item_name || '';
+      const th = (usedCustom && it.custom_item_name_th) || '';
+      if (!zh && !en) { nameMissing++; continue; }
+      upsert.run(it.item_code, zh || en, en || null, th || null, it.stock_uom || null);
       n++;
     }
   });
@@ -155,17 +160,15 @@ erpRouter.post('/sync', async (req, res) => {
 
   res.json({
     count: n,
-    name_field: usedNameField ? nameField : 'item_name',
-    name_field_requested: nameField,
-    name_field_used: usedNameField,
     name_missing: nameMissing,
+    custom_fields_used: usedCustom,
     whitelist_used: whitelist.length > 0,
     whitelist_size: whitelist.length,
     strict_mode: strict,
     strict_purged: strictPurged,
     strict_blocked: strictBlocked,
-    note: usedNameField
+    note: usedCustom
       ? undefined
-      : (wantsCustomName ? `ERP 没有字段 \`${nameField}\`,本次同步退回 item_name` : undefined),
+      : 'ERP 未返回自定义名称字段(中文/泰文),本次仅同步了 item_name(英文)',
   });
 });
