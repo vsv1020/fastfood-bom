@@ -29,7 +29,7 @@ export function flattenFolders(
 }
 
 export function FolderTree({
-  kind, title, exportHref, extraExport, folders, items,
+  kind, title, exportHref, extraExports, folders, items,
   selectedItemId, checked,
   onSelectItem, onToggleCheck, onCheckAll, onClearChecks, onBulkDelete,
   onNewItem, onReload,
@@ -37,7 +37,7 @@ export function FolderTree({
   kind: 'product' | 'combo';
   title: string;
   exportHref: string;
-  extraExport?: { label: string; href: string };
+  extraExports?: { label: string; href: string }[];
   folders: Folder[];
   items: TreeItemData[];
   selectedItemId: number | null;
@@ -267,14 +267,14 @@ export function FolderTree({
                 <div className="absolute right-2 top-full mt-1 z-20 w-56 bg-white rounded-lg shadow-lg border border-slate-200 py-1 max-h-72 overflow-y-auto">
                   <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-slate-400">{t('btn.export')}</div>
                   {renderExportOptions(exportHref)}
-                  {extraExport && (
-                    <>
+                  {(extraExports || []).map((ex) => (
+                    <div key={ex.href}>
                       <div className="px-3 py-1 mt-1 border-t border-slate-100 text-[10px] uppercase tracking-wide text-slate-400">
-                        {extraExport.label}
+                        {ex.label}
                       </div>
-                      {renderExportOptions(extraExport.href)}
-                    </>
-                  )}
+                      {renderExportOptions(ex.href)}
+                    </div>
+                  ))}
                 </div>
               </>
             )}

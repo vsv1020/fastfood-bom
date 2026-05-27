@@ -102,7 +102,7 @@ function normalizeEntries(arr, singleField) {
 
 combosRouter.post('/', (req, res) => {
   const {
-    code, name, name_en, name_th, description, folder_id, lines = [],
+    code, name, name_en, name_th, description, folder_id, price, lines = [],
     packaging_takeout_codes, packaging_dinein_codes,
     sauce_takeout_codes, sauce_dinein_codes,
     // backwards-compat 旧字段
@@ -118,12 +118,13 @@ combosRouter.post('/', (req, res) => {
   try {
     const tx = db.transaction(() => {
       const info = db.prepare(`
-        INSERT INTO combos(code, name, name_en, name_th, description, folder_id,
+        INSERT INTO combos(code, name, name_en, name_th, description, folder_id, price,
           packaging_takeout_codes, packaging_dinein_codes,
           sauce_takeout_codes, sauce_dinein_codes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         finalCode, name, name_en || null, name_th || null, description || null, folder_id ?? null,
+        price == null || price === '' ? null : Number(price),
         JSON.stringify(pkgTo), JSON.stringify(pkgDi),
         JSON.stringify(sauTo), JSON.stringify(sauDi),
       );
@@ -150,7 +151,7 @@ combosRouter.put('/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM combos WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'not found' });
   const {
-    code, name, name_en, name_th, description, folder_id, lines,
+    code, name, name_en, name_th, description, folder_id, price, lines,
     packaging_takeout_codes, packaging_dinein_codes,
     sauce_takeout_codes, sauce_dinein_codes,
     packaging_takeout_code, packaging_dinein_code,
@@ -169,6 +170,7 @@ combosRouter.put('/:id', (req, res) => {
           name_th = ?,
           description = ?,
           folder_id = ?,
+          price = ?,
           packaging_takeout_codes = ?,
           packaging_dinein_codes  = ?,
           sauce_takeout_codes     = ?,
@@ -180,6 +182,7 @@ combosRouter.put('/:id', (req, res) => {
           name_th === undefined ? existing.name_th : (name_th || null),
           description ?? null,
           folder_id === undefined ? existing.folder_id : (folder_id ?? null),
+          price === undefined ? existing.price : (price == null || price === '' ? null : Number(price)),
           JSON.stringify(pkgTo), JSON.stringify(pkgDi),
           JSON.stringify(sauTo), JSON.stringify(sauDi),
           id

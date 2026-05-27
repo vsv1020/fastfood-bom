@@ -322,6 +322,120 @@ exportRouter.get('/combo-bom.csv', (req, res) => {
   send(res, 'ttpos_combo_bom', csv);
 });
 
+// ---- BOM 组合 → TTPOS 完整导入模板 (12 列:三语名 + 单位/税/价格 + 物料级 BOM) ----
+exportRouter.get('/combo-ttpos.csv', (req, res) => {
+  const scope = folderScope(req.query.folder_id);
+  let combos;
+  if (scope === null) {
+    combos = db.prepare(`SELECT * FROM combos ORDER BY code`).all();
+  } else if (scope === 'ungrouped') {
+    combos = db.prepare(`SELECT * FROM combos WHERE folder_id IS NULL ORDER BY code`).all();
+  } else {
+    const ph = scope.map(() => '?').join(',');
+    combos = db.prepare(`SELECT * FROM combos WHERE folder_id IN (${ph}) ORDER BY code`).all(...scope);
+  }
+
+  const matLinesStmt = db.prepare('SELECT id, material_code, qty FROM product_lines WHERE product_id = ?');
+  const matSubsStmt  = db.prepare('SELECT material_code, qty, priority FROM product_line_substitutes WHERE parent_line_id = ?');
+  const cLineStmt    = db.prepare('SELECT id, product_id, qty AS combo_qty FROM combo_lines WHERE combo_id = ?');
+  const cLineSubsStmt= db.prepare('SELECT product_id, qty AS combo_qty, priority FROM combo_line_substitutes WHERE parent_line_id = ?');
+
+  function parseEnt(text) {
+    if (!text) return [];
+    try {
+      const a = JSON.parse(text);
+      if (!Array.isArray(a)) return [];
+      return a.map((it) => typeof it === 'string'
+        ? { code: it, qty: 1 }
+        : (it && it.code ? { code: String(it.code), qty: Number(it.qty) || 1 } : null)).filter(Boolean);
+    } catch { return []; }
+  }
+  function rollup(combo, channel) {
+    const bom = new Map();
+    const add = (code, qty, priority) => {
+      if (!code || qty <= 0) return;
+      const key = `${code}|${priority}`;
+      const cur = bom.get(key) || { item_code: code, priority, qty: 0 };
+      cur.qty += qty;
+      bom.set(key, cur);
+    };
+    const expandProduct = (productId, multiplier, outerPriority) => {
+      for (const m of matLinesStmt.all(productId)) {
+        add(m.material_code, m.qty * multiplier, outerPriority);
+        for (const s of matSubsStmt.all(m.id))
+          add(s.material_code, s.qty * multiplier, Math.max(outerPriority, s.priority));
+      }
+    };
+    for (const cl of cLineStmt.all(combo.id)) {
+      expandProduct(cl.product_id, cl.combo_qty, 0);
+      for (const cs of cLineSubsStmt.all(cl.id))
+        expandProduct(cs.product_id, cs.combo_qty * cl.combo_qty, cs.priority);
+    }
+    for (const e of parseEnt(channel === 'takeout' ? combo.packaging_takeout_codes : combo.packaging_dinein_codes))
+      add(e.code, e.qty, 0);
+    for (const e of parseEnt(channel === 'takeout' ? combo.sauce_takeout_codes : combo.sauce_dinein_codes))
+      add(e.code, e.qty, 0);
+    return [...bom.values()];
+  }
+
+  const folderName = new Map(db.prepare('SELECT id, name FROM folders').all().map((f) => [f.id, f.name]));
+
+  const out = [];
+  for (const c of combos) {
+    const base = {
+      product_category_name_en: c.folder_id != null ? (folderName.get(c.folder_id) || '') : '',
+      product_name_en: c.name_en || c.name,
+      product_name_zh: c.name,
+      product_name_th: c.name_th || '',
+      unit_name_en: 'pc',
+      tax_name_en: 'VAT',
+      price: c.price == null ? '' : c.price,
+    };
+    let anyRow = false;
+    for (const channel of ['takeout', 'dinein']) {
+      const rows = rollup(c, channel);
+      if (rows.length === 0) continue;
+      anyRow = true;
+      const codes = [...new Set(rows.map((r) => r.item_code))];
+      const meta = db.prepare(
+        `SELECT item_code, item_name, name_en, uom FROM materials WHERE item_code IN (${codes.map(() => '?').join(',')})`
+      ).all(...codes);
+      const metaByCode = new Map(meta.map((m) => [m.item_code, m]));
+      rows.sort((a, b) => a.priority - b.priority || a.item_code.localeCompare(b.item_code));
+      for (const r of rows) {
+        const m = metaByCode.get(r.item_code) || {};
+        out.push({
+          ...base,
+          processing_servings: 1,
+          material_name_en: m.name_en || m.item_name || r.item_code,
+          material_code: r.item_code,
+          material_unit_name_en: m.uom || '',
+          material_qty: Math.round(r.qty * 1000) / 1000,
+        });
+      }
+    }
+    // 无 BOM 的套餐:仅输出一行产品级信息(物料列留空)
+    if (!anyRow) {
+      out.push({ ...base, processing_servings: '', material_name_en: '', material_code: '', material_unit_name_en: '', material_qty: '' });
+    }
+  }
+  // 去重:外卖/到店 BOM 完全一致的套餐会产生重复行
+  const seen = new Set();
+  const deduped = out.filter((row) => {
+    const k = JSON.stringify(row);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  const csv = toCSV(
+    ['product_category_name_en', 'product_name_en', 'product_name_zh', 'product_name_th',
+     'unit_name_en', 'tax_name_en', 'price', 'processing_servings',
+     'material_name_en', 'material_code', 'material_unit_name_en', 'material_qty'],
+    deduped
+  );
+  send(res, 'ttpos_combo_full', csv);
+});
+
 // ---- 共享物料 (3 个固定组,每组多行 + 替换品) ----
 exportRouter.get('/shared-boms.csv', (req, res) => {
   const out = [];

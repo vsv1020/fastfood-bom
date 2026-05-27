@@ -75,7 +75,10 @@ export default function CombosPage() {
           kind="combo"
           title={t('title.bom_sets')}
           exportHref="/api/export/combos.csv"
-          extraExport={{ label: t('export.final_bom'), href: '/api/export/combo-bom.csv' }}
+          extraExports={[
+            { label: t('export.final_bom'), href: '/api/export/combo-bom.csv' },
+            { label: t('export.ttpos_full'), href: '/api/export/combo-ttpos.csv' },
+          ]}
           folders={folders}
           items={combos.map((c): TreeItemData => ({
             id: c.id,
@@ -164,6 +167,7 @@ function ComboEditor({
   const [nameTh, setNameTh] = useState('');
   const [description, setDescription] = useState('');
   const [folderId, setFolderId] = useState<number | null>(presetFolderId);
+  const [price, setPrice] = useState('');
   const [lines, setLines] = useState<ComboLine[]>([]);
   const [pkgTo, setPkgTo] = useState<PackEntry[]>([]);
   const [pkgDi, setPkgDi] = useState<PackEntry[]>([]);
@@ -206,7 +210,7 @@ function ComboEditor({
   useEffect(() => {
     if (comboId == null) {
       setCode(''); setName(''); setNameEn(''); setNameTh(''); setDescription(''); setLines([]);
-      setFolderId(presetFolderId);
+      setFolderId(presetFolderId); setPrice('');
       setPkgTo([]); setPkgDi([]); setSauceTo([]); setSauceDi([]);
       setBom(null); setErr(null);
       return;
@@ -216,6 +220,7 @@ function ComboEditor({
       setNameEn(c.name_en || ''); setNameTh(c.name_th || '');
       setDescription(c.description || '');
       setFolderId(c.folder_id ?? null);
+      setPrice(c.price == null ? '' : String(c.price));
       setLines(c.lines || []);
       setPkgTo(c.packaging_takeout_codes || []); setPkgDi(c.packaging_dinein_codes || []);
       setSauceTo(c.sauce_takeout_codes || []); setSauceDi(c.sauce_dinein_codes || []);
@@ -257,6 +262,7 @@ function ComboEditor({
         name_th: nameTh.trim() || null,
         description: description.trim() || null,
         folder_id: folderId,
+        price: price.trim() === '' ? null : Number(price),
         lines: lines.map((l) => ({ product_id: l.product_id, qty: l.qty, substitutes: l.substitutes })),
         packaging_takeout_codes: pkgTo, packaging_dinein_codes: pkgDi,
         sauce_takeout_codes: sauceTo, sauce_dinein_codes: sauceDi,
@@ -288,6 +294,7 @@ function ComboEditor({
         name_th: nameTh.trim() || null,
         description: description.trim() || null,
         folder_id: folderId,
+        price: price.trim() === '' ? null : Number(price),
         lines: lines.map((l) => ({ product_id: l.product_id, qty: l.qty, substitutes: l.substitutes })),
         packaging_takeout_codes: pkgTo, packaging_dinein_codes: pkgDi,
         sauce_takeout_codes: sauceTo, sauce_dinein_codes: sauceDi,
@@ -324,7 +331,7 @@ function ComboEditor({
                        onChange={(e) => setNameTh(e.target.value)} placeholder="เช่น ชุดชีสบีฟเบอร์เกอร์" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="label">{t('lbl.desc')} ({t('placeholder.optional')})</label>
                 <input className="input mt-1" value={description}
@@ -339,6 +346,11 @@ function ComboEditor({
                     <option key={f.id} value={f.id}>{f.label}</option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className="label">{t('editor.price')} ({t('placeholder.optional')})</label>
+                <input type="number" step="0.01" min="0" className="input mt-1" value={price}
+                       onChange={(e) => setPrice(e.target.value)} placeholder="79" />
               </div>
             </div>
           </div>

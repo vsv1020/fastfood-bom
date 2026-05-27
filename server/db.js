@@ -171,6 +171,8 @@ ensureColumn('combos',   'folder_id', 'INTEGER');
 // 物料三语名称: item_name 作中文主名,加英文/泰文
 ensureColumn('materials', 'name_en', 'TEXT');
 ensureColumn('materials', 'name_th', 'TEXT');
+// 套餐售价 (用于 TTPOS 导出 price 列)
+ensureColumn('combos', 'price', 'REAL');
 
 export function getSetting(key) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);

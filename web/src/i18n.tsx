@@ -22,6 +22,8 @@ const D: Dict = {
   'btn.export':     { zh: '导出',       en: 'Export',      th: 'ส่งออก' },
   'export.all':     { zh: '导出全部',   en: 'Export all',  th: 'ส่งออกทั้งหมด' },
   'export.final_bom': { zh: '最终 BOM · TTPOS 导入格式', en: 'Final BOM · TTPOS format', th: 'BOM สุดท้าย · รูปแบบ TTPOS' },
+  'export.ttpos_full': { zh: 'TTPOS 完整模板(12 列)', en: 'TTPOS full template (12 cols)', th: 'เทมเพลต TTPOS เต็ม (12 คอลัมน์)' },
+  'editor.price':      { zh: '售价',                 en: 'Price',                 th: 'ราคา' },
   'btn.edit':       { zh: '编辑',       en: 'Edit',        th: 'แก้ไข' },
   'btn.duplicate':  { zh: '复制',       en: 'Duplicate',   th: 'ทำสำเนา' },
   'btn.select_all': { zh: '全选',       en: 'Select all',  th: 'เลือกทั้งหมด' },

@@ -90,6 +90,7 @@ export interface Combo {
   sauce_takeout_codes:     PackEntry[];
   sauce_dinein_codes:      PackEntry[];
   folder_id?: number | null;
+  price?: number | null;
   created_at: string;
   line_count?: number;
   lines?: ComboLine[];
