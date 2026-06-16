@@ -16,6 +16,7 @@ export default function SettingsPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncingPrices, setSyncingPrices] = useState(false);
   const t = useT();
 
   async function load() {
@@ -70,6 +71,26 @@ export default function SettingsPage() {
     } catch (e: any) {
       flash('同步失败: ' + e.message);
     } finally { setSyncing(false); }
+  }
+
+  async function syncPrices() {
+    setSyncingPrices(true); setMsg(null);
+    try {
+      const r = await api.syncPrices();
+      const missingSample = r.missing.slice(0, 5).map((m) => m.item_code).join(', ');
+      const taxPart = r.tax_rates_in_use && r.tax_rates_in_use.length > 0
+        ? ` · ${t('margin.tax_rate')}: ${r.tax_rates_in_use.map((x) => `${(x * 100).toFixed(0)}%`).join('、')}`
+        : '';
+      flash(
+        t('margin.sync_done')
+          .replace('{matched}', String(r.matched))
+          .replace('{missing}', String(r.missing_count))
+        + (r.missing_count > 0 ? ` (${missingSample}${r.missing_count > 5 ? '…' : ''})` : '')
+        + taxPart
+      );
+    } catch (e: any) {
+      flash('同步失败: ' + e.message);
+    } finally { setSyncingPrices(false); }
   }
 
   function flash(s: string) {
@@ -161,6 +182,10 @@ export default function SettingsPage() {
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
+          <button className="btn-outline" onClick={syncPrices} disabled={syncingPrices}>
+            <RefreshCw size={14} className={syncingPrices ? 'animate-spin' : ''} />
+            {t('margin.sync_prices')}
+          </button>
           <button className="btn-outline" onClick={sync} disabled={syncing}>
             <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
             {syncing ? t('set.syncing') : t('set.sync_now')}

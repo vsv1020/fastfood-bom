@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import * as XLSX from 'xlsx';
 import { db } from '../db.js';
+import { comboMargins, loadMaterialMap } from '../lib/cost.js';
 
 export const exportRouter = Router();
 
@@ -130,6 +132,7 @@ exportRouter.get('/products.csv', (req, res) => {
 // ---- BOM 组合 (套餐扁平展开:每行一个 child product,主/替换 / 包装/酱料 列出) ----
 exportRouter.get('/combos.csv', (req, res) => {
   const out = [];
+  const matByCode = loadMaterialMap(); // 算成本/毛利用
   const scope = folderScope(req.query.folder_id);
   let combos;
   if (scope === null) {
@@ -163,46 +166,62 @@ exportRouter.get('/combos.csv', (req, res) => {
     const pkgDi = fmtEntries(parseEntries(c.packaging_dinein_codes));
     const sauceTo = fmtEntries(parseEntries(c.sauce_takeout_codes));
     const sauceDi = fmtEntries(parseEntries(c.sauce_dinein_codes));
-    if (lines.length === 0) {
-      out.push({
-        combo_code: c.code, combo_name: c.name,
-        combo_name_en: c.name_en || '', combo_name_th: c.name_th || '',
-        combo_desc: c.description || '',
-        line_role: '', priority: '',
-        child_code: '', child_name: '', child_name_en: '', child_name_th: '', qty: '', uom: '',
-        packaging_takeout: pkgTo, packaging_dinein: pkgDi,
-        sauce_takeout: sauceTo, sauce_dinein: sauceDi,
-      });
-      continue;
-    }
-    let firstRow = true;
-    for (const ln of lines) {
-      out.push({
-        combo_code: c.code, combo_name: c.name,
-        combo_name_en: c.name_en || '', combo_name_th: c.name_th || '',
-        combo_desc: c.description || '',
-        line_role: '主', priority: 0,
-        child_code: ln.code, child_name: ln.name,
-        child_name_en: ln.name_en || '', child_name_th: ln.name_th || '',
-        qty: ln.qty, uom: '份',
-        // 把套餐级配置只在主单品的第一行显示一次
-        packaging_takeout: firstRow ? pkgTo : '',
-        packaging_dinein: firstRow ? pkgDi : '',
-        sauce_takeout: firstRow ? sauceTo : '',
-        sauce_dinein: firstRow ? sauceDi : '',
-      });
-      firstRow = false;
-      for (const s of subStmt.all(ln.id)) {
+    const mg = comboMargins(c, matByCode); // 该套餐堂食/外卖成本+毛利
+    // 每个套餐按渠道展两段,行末附 channel 列;包装/酱料 + 成本/毛利率仅在所属渠道的主第一行显示
+    for (const channel of ['takeout', 'dinein']) {
+      const isTo = channel === 'takeout';
+      const mc = mg[channel];
+      const chCost = Math.round(mc.cost * 1000) / 1000;
+      const chMargin = mc.margin == null ? '' : (Math.round(mc.margin * 10000) / 100) + '%';
+      if (lines.length === 0) {
         out.push({
           combo_code: c.code, combo_name: c.name,
-        combo_name_en: c.name_en || '', combo_name_th: c.name_th || '',
-        combo_desc: c.description || '',
-          line_role: '替换', priority: s.priority,
-          child_code: s.code, child_name: s.name,
-          child_name_en: s.name_en || '', child_name_th: s.name_th || '',
-          qty: s.qty, uom: '份',
-          packaging_takeout: '', packaging_dinein: '', sauce_takeout: '', sauce_dinein: '',
+          combo_name_en: c.name_en || '', combo_name_th: c.name_th || '',
+          combo_desc: c.description || '',
+          line_role: '', priority: '',
+          child_code: '', child_name: '', child_name_en: '', child_name_th: '', qty: '', uom: '',
+          packaging_takeout: isTo ? pkgTo : '',
+          packaging_dinein:  isTo ? '' : pkgDi,
+          sauce_takeout:     isTo ? sauceTo : '',
+          sauce_dinein:      isTo ? '' : sauceDi,
+          channel,
+          cost: chCost, margin_pct: chMargin,
         });
+        continue;
+      }
+      let firstRow = true;
+      for (const ln of lines) {
+        out.push({
+          combo_code: c.code, combo_name: c.name,
+          combo_name_en: c.name_en || '', combo_name_th: c.name_th || '',
+          combo_desc: c.description || '',
+          line_role: '主', priority: 0,
+          child_code: ln.code, child_name: ln.name,
+          child_name_en: ln.name_en || '', child_name_th: ln.name_th || '',
+          qty: ln.qty, uom: '份',
+          packaging_takeout: firstRow && isTo  ? pkgTo   : '',
+          packaging_dinein:  firstRow && !isTo ? pkgDi   : '',
+          sauce_takeout:     firstRow && isTo  ? sauceTo : '',
+          sauce_dinein:      firstRow && !isTo ? sauceDi : '',
+          channel,
+          cost:       firstRow ? chCost   : '',
+          margin_pct: firstRow ? chMargin : '',
+        });
+        firstRow = false;
+        for (const s of subStmt.all(ln.id)) {
+          out.push({
+            combo_code: c.code, combo_name: c.name,
+            combo_name_en: c.name_en || '', combo_name_th: c.name_th || '',
+            combo_desc: c.description || '',
+            line_role: '替换', priority: s.priority,
+            child_code: s.code, child_name: s.name,
+            child_name_en: s.name_en || '', child_name_th: s.name_th || '',
+            qty: s.qty, uom: '份',
+            packaging_takeout: '', packaging_dinein: '', sauce_takeout: '', sauce_dinein: '',
+            channel,
+            cost: '', margin_pct: '',
+          });
+        }
       }
     }
   }
@@ -210,7 +229,8 @@ exportRouter.get('/combos.csv', (req, res) => {
     ['combo_code', 'combo_name', 'combo_name_en', 'combo_name_th', 'combo_desc',
      'line_role', 'priority',
      'child_code', 'child_name', 'child_name_en', 'child_name_th', 'qty', 'uom',
-     'packaging_takeout', 'packaging_dinein', 'sauce_takeout', 'sauce_dinein'],
+     'packaging_takeout', 'packaging_dinein', 'sauce_takeout', 'sauce_dinein',
+     'channel', 'cost', 'margin_pct'],
     out
   );
   send(res, 'bom_combos', csv);
@@ -302,11 +322,12 @@ exportRouter.get('/combo-bom.csv', (req, res) => {
           material_code: r.item_code,
           material_unit_name_en: m.uom || '',
           material_qty: Math.round(r.qty * 1000) / 1000,
+          channel,
         });
       }
     }
   }
-  // 去重:外卖/到店 BOM 完全一致的套餐会产生重复行,合并(TTPOS 导入不应有重复行)
+  // 行内已含 channel,同套餐外卖/堂食保留为各自一段;同段内若有完全相同的行才合并
   const seen = new Set();
   const deduped = out.filter((row) => {
     const k = JSON.stringify(row);
@@ -316,7 +337,7 @@ exportRouter.get('/combo-bom.csv', (req, res) => {
   });
   const csv = toCSV(
     ['product_category_name_en', 'product_name_en', 'product_spec_name_en', 'processing_servings',
-     'material_name_en', 'material_code', 'material_unit_name_en', 'material_qty'],
+     'material_name_en', 'material_code', 'material_unit_name_en', 'material_qty', 'channel'],
     deduped
   );
   send(res, 'ttpos_combo_bom', csv);
@@ -411,15 +432,16 @@ exportRouter.get('/combo-ttpos.csv', (req, res) => {
           material_code: r.item_code,
           material_unit_name_en: m.uom || '',
           material_qty: Math.round(r.qty * 1000) / 1000,
+          channel,
         });
       }
     }
     // 无 BOM 的套餐:仅输出一行产品级信息(物料列留空)
     if (!anyRow) {
-      out.push({ ...base, processing_servings: '', material_name_en: '', material_code: '', material_unit_name_en: '', material_qty: '' });
+      out.push({ ...base, processing_servings: '', material_name_en: '', material_code: '', material_unit_name_en: '', material_qty: '', channel: '' });
     }
   }
-  // 去重:外卖/到店 BOM 完全一致的套餐会产生重复行
+  // 行内已含 channel,同套餐外卖/堂食保留为各自一段
   const seen = new Set();
   const deduped = out.filter((row) => {
     const k = JSON.stringify(row);
@@ -430,7 +452,7 @@ exportRouter.get('/combo-ttpos.csv', (req, res) => {
   const csv = toCSV(
     ['product_category_name_en', 'product_name_en', 'product_name_zh', 'product_name_th',
      'unit_name_en', 'tax_name_en', 'price', 'processing_servings',
-     'material_name_en', 'material_code', 'material_unit_name_en', 'material_qty'],
+     'material_name_en', 'material_code', 'material_unit_name_en', 'material_qty', 'channel'],
     deduped
   );
   send(res, 'ttpos_combo_full', csv);
@@ -482,4 +504,109 @@ exportRouter.get('/shared-boms.csv', (req, res) => {
     out
   );
   send(res, 'shared_boms', csv);
+});
+
+// ---- 毛利率 (每套餐 2 行:外卖 / 堂食;成本=含税单品成本×用量,毛利率=(售价−成本)/售价) ----
+exportRouter.get('/margins.csv', (req, res) => {
+  const matByCode = loadMaterialMap();
+  const folderName = new Map(db.prepare('SELECT id, name FROM folders').all().map((f) => [f.id, f.name]));
+  const scope = folderScope(req.query.folder_id);
+  let combos;
+  if (scope === null) combos = db.prepare('SELECT * FROM combos ORDER BY code').all();
+  else if (scope === 'ungrouped') combos = db.prepare('SELECT * FROM combos WHERE folder_id IS NULL ORDER BY code').all();
+  else { const ph = scope.map(() => '?').join(','); combos = db.prepare(`SELECT * FROM combos WHERE folder_id IN (${ph}) ORDER BY code`).all(...scope); }
+
+  const matName = (code) => matByCode.get(code)?.item_name || code;
+  const out = [];
+  for (const c of combos) {
+    const m = comboMargins(c, matByCode);
+    const folder = c.folder_id != null ? (folderName.get(c.folder_id) || '') : '';
+    for (const channel of ['takeout', 'dinein']) {
+      const x = m[channel];
+      out.push({
+        '套餐编码': c.code,
+        '套餐名称': c.name,
+        '文件夹': folder,
+        '渠道': channel === 'takeout' ? '外卖' : '堂食',
+        '售价': x.price == null ? '' : x.price,
+        '成本': Math.round(x.cost * 1000) / 1000,
+        '毛利率': x.margin == null ? '' : (Math.round(x.margin * 10000) / 100) + '%',
+        '数据完整': x.complete ? '是' : '否',
+        '缺价物料': x.missing.map(matName).join(' | '),
+      });
+    }
+  }
+  const csv = toCSV(
+    ['套餐编码', '套餐名称', '文件夹', '渠道', '售价', '成本', '毛利率', '数据完整', '缺价物料'],
+    out
+  );
+  send(res, 'margins', csv);
+});
+
+// ---- 毛利明细 Excel(.xlsx,合并单元格)----
+// 每个套餐 × 渠道 一个合并块:套餐名/渠道/成本合计/售价/毛利率 纵向合并跨该块物料行;
+// 物料逐行展开(主路径 BOM,与成本口径一致),带 用量/单价(含税成本单价)/行成本。
+exportRouter.get('/margins.xlsx', (req, res) => {
+  const matByCode = loadMaterialMap();
+  const scope = folderScope(req.query.folder_id);
+  let combos;
+  if (scope === null) combos = db.prepare('SELECT * FROM combos ORDER BY code').all();
+  else if (scope === 'ungrouped') combos = db.prepare('SELECT * FROM combos WHERE folder_id IS NULL ORDER BY code').all();
+  else { const ph = scope.map(() => '?').join(','); combos = db.prepare(`SELECT * FROM combos WHERE folder_id IN (${ph}) ORDER BY code`).all(...scope); }
+
+  const header = ['套餐编码', '套餐名称', '渠道', '物料名称', '物料编码', '用量', '单位', '单价', '行成本', '成本合计', '售价', '毛利率'];
+  const aoa = [header];
+  const merges = [];
+  const r3 = (x) => Math.round(x * 1000) / 1000;
+  const r4 = (x) => Math.round(x * 10000) / 10000;
+  for (const c of combos) {
+    const m = comboMargins(c, matByCode);
+    for (const channel of ['takeout', 'dinein']) {
+      const ch = m[channel];
+      const bd = ch.breakdown.length ? ch.breakdown : [{ item_code: '', qty: '', unit_cost: '', line_cost: '' }];
+      const startR = aoa.length;
+      bd.forEach((b, i) => {
+        const mat = b.item_code ? (matByCode.get(b.item_code) || {}) : {};
+        aoa.push([
+          i === 0 ? c.code : '',
+          i === 0 ? c.name : '',
+          i === 0 ? (channel === 'takeout' ? '外卖' : '堂食') : '',
+          b.item_code ? (mat.item_name || b.item_code) : '',
+          b.item_code,
+          b.qty === '' ? '' : Number(b.qty),
+          mat.uom || '',
+          b.unit_cost === '' ? '' : r4(b.unit_cost),
+          b.line_cost === '' ? '' : r3(b.line_cost),
+          i === 0 ? r3(ch.cost) : '',
+          i === 0 ? (ch.price == null ? '' : ch.price) : '',
+          i === 0 ? (ch.margin == null ? '' : ch.margin) : '',
+        ]);
+      });
+      const endR = aoa.length - 1;
+      if (endR > startR) {
+        for (const col of [0, 1, 2, 9, 10, 11]) merges.push({ s: { r: startR, c: col }, e: { r: endR, c: col } });
+      }
+    }
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!merges'] = merges;
+  ws['!cols'] = [{ wch: 10 }, { wch: 24 }, { wch: 6 }, { wch: 22 }, { wch: 12 },
+    { wch: 8 }, { wch: 6 }, { wch: 9 }, { wch: 9 }, { wch: 10 }, { wch: 8 }, { wch: 9 }];
+  // 数字格式:金额 2 位、毛利率百分比
+  const numFmt = { 5: '0.00', 7: '0.00', 8: '0.00', 9: '0.00', 10: '0.00', 11: '0.00%' };
+  for (let R = 1; R < aoa.length; R++) {
+    for (const cStr of Object.keys(numFmt)) {
+      const C = Number(cStr);
+      const cell = ws[XLSX.utils.encode_cell({ r: R, c: C })];
+      if (cell && typeof cell.v === 'number') cell.z = numFmt[C];
+    }
+  }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '套餐毛利');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="combo_margins_${Date.now()}.xlsx"`);
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.send(buf);
 });

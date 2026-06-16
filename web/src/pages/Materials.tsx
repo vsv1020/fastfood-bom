@@ -605,6 +605,34 @@ function MaterialEditor({ initial, defaultCategory, onClose, onSaved }: {
               </div>
             </div>
           )}
+          <div className="pt-2 border-t border-slate-100 space-y-1.5 text-[12px]">
+            {initial?.internal_price != null && (
+              <div className="text-slate-500">
+                {t('mat.internal_price')}: <span className="font-mono text-slate-700">{initial.internal_price}</span>
+                {initial.uom && <span className="text-slate-400"> {initial.uom}</span>}
+              </div>
+            )}
+            {initial?.tax_rate != null && (
+              <div className="text-slate-500">
+                {t('mat.tax_rate')}: <span className="font-medium text-slate-700">{(initial.tax_rate * 100).toFixed(0)}%</span>
+                {initial.tax_template && <span className="text-slate-400 text-[11px]"> · {initial.tax_template}</span>}
+              </div>
+            )}
+            {initial?.price_includes_tax != null && (
+              <div className="text-slate-500">
+                {t('mat.price_includes_tax')}:{' '}
+                <span className="font-medium text-slate-700">
+                  {initial.price_includes_tax ? t('mat.tax_included') : t('mat.tax_excluded')}
+                </span>
+              </div>
+            )}
+            {initial?.price_synced_at && (
+              <div className="text-slate-400">
+                {t('mat.synced_at')}: {initial.price_synced_at}
+              </div>
+            )}
+            <div className="text-slate-400 text-[11px] pt-0.5">{t('mat.tax_from_erp')}</div>
+          </div>
           {err && <div className="text-rose-600 text-sm">{err}</div>}
         </div>
         <div className="mt-5 flex justify-end gap-2">

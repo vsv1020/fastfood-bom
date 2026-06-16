@@ -1,6 +1,6 @@
 import type {
   Material, Product, Combo, ComboBom, Channel, Category, BomRow,
-  SharedBomGroup, SharedBomLine, Folder,
+  SharedBomGroup, SharedBomLine, Folder, MarginResponse, SyncPricesResult, ComboMargin,
 } from './types';
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
@@ -115,6 +115,14 @@ export const api = {
   listSharedBomGroups: () => http<SharedBomGroup[]>('/api/shared-boms'),
   updateSharedBomGroup: (id: number, s: { name?: string; enabled?: boolean; lines?: SharedBomLine[] }) =>
     http<SharedBomGroup>(`/api/shared-boms/${id}`, { method: 'PUT', body: JSON.stringify(s) }),
+
+  // margin (毛利率)
+  getComboMargin: (id: number) => http<ComboMargin>(`/api/margin/combo/${id}`),
+  getMargins: (folderId?: number | string | null) => {
+    const q = folderId != null && folderId !== '' ? `?folder_id=${encodeURIComponent(String(folderId))}` : '';
+    return http<MarginResponse>(`/api/margin${q}`);
+  },
+  syncPrices: () => http<SyncPricesResult>('/api/erp/sync-prices', { method: 'POST' }),
 
   syncErp: () => http<{
     count: number; note?: string;

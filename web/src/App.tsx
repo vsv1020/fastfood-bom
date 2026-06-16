@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { Boxes, Sandwich, PackageOpen, ShoppingCart, Share2, Settings as SettingsIcon, Globe, LogOut, type LucideIcon } from 'lucide-react';
+import { Boxes, Sandwich, PackageOpen, ShoppingCart, Share2, Settings as SettingsIcon, TrendingUp, Globe, LogOut, type LucideIcon } from 'lucide-react';
 import MaterialsPage from './pages/Materials';
 import ProductsPage from './pages/Products';
 import CombosPage from './pages/Combos';
 import OrdersPage from './pages/Orders';
 import SharedBomsPage from './pages/SharedBoms';
+import MarginPage from './pages/Margin';
 import SettingsPage from './pages/Settings';
 import { useT, useLang, LANG_OPTIONS, type Lang } from './i18n';
 
-type Tab = 'materials' | 'products' | 'combos' | 'orders' | 'shared' | 'settings';
+type Tab = 'materials' | 'products' | 'combos' | 'orders' | 'shared' | 'margin' | 'settings';
 
 const TABS: { id: Tab; tkey: string; icon: LucideIcon }[] = [
   { id: 'materials', tkey: 'nav.materials', icon: Boxes },
@@ -16,6 +17,7 @@ const TABS: { id: Tab; tkey: string; icon: LucideIcon }[] = [
   { id: 'combos',    tkey: 'nav.combos',    icon: PackageOpen },
   { id: 'shared',    tkey: 'nav.shared',    icon: Share2 },
   { id: 'orders',    tkey: 'nav.orders',    icon: ShoppingCart },
+  { id: 'margin',    tkey: 'nav.margin',    icon: TrendingUp },
   { id: 'settings',  tkey: 'nav.settings',  icon: SettingsIcon },
 ];
 
@@ -95,6 +97,7 @@ export default function App() {
         {tab === 'combos'    && <CombosPage />}
         {tab === 'shared'    && <SharedBomsPage />}
         {tab === 'orders'    && <OrdersPage />}
+        {tab === 'margin'    && <MarginPage />}
         {tab === 'settings'  && <SettingsPage />}
       </main>
     </div>

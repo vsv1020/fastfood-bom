@@ -11,6 +11,11 @@ export interface Material {
   channel: Channel | null;
   source: 'manual' | 'erp';
   updated_at: string;
+  internal_price?: number | null;
+  price_includes_tax?: 0 | 1;
+  tax_rate?: number;
+  tax_template?: string | null;
+  price_synced_at?: string | null;
 }
 
 export interface ProductLineSubstitute {
@@ -91,9 +96,50 @@ export interface Combo {
   sauce_dinein_codes:      PackEntry[];
   folder_id?: number | null;
   price?: number | null;
+  price_takeout?: number | null;
+  price_dinein?: number | null;
   created_at: string;
   line_count?: number;
   lines?: ComboLine[];
+}
+
+export interface MarginChannel {
+  price: number | null;
+  cost: number;
+  margin: number | null;
+  complete: boolean;
+  missing: { item_code: string; item_name: string }[];
+}
+
+export interface MarginRow {
+  combo_id: number;
+  code: string;
+  name: string;
+  folder: string;
+  takeout: MarginChannel;
+  dinein: MarginChannel;
+}
+
+export interface MarginResponse {
+  tax_rates_in_use: number[];
+  tax_source: string;
+  markup: number;
+  count: number;
+  combos: MarginRow[];
+}
+
+export interface ComboMarginChannel { cost: number; complete: boolean; missing: { item_code: string; item_name: string }[]; }
+export interface ComboMargin { combo_id: number; markup: number; takeout: ComboMarginChannel; dinein: ComboMarginChannel; }
+
+export interface SyncPricesResult {
+  price_list: string;
+  erp_rows: number;
+  local_materials: number;
+  matched: number;
+  missing_count: number;
+  missing: { item_code: string; uom: string | null }[];
+  tax_rates_in_use?: number[];
+  tax_note?: string;
 }
 
 export interface BomRow extends Material {

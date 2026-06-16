@@ -173,6 +173,16 @@ ensureColumn('materials', 'name_en', 'TEXT');
 ensureColumn('materials', 'name_th', 'TEXT');
 // 套餐售价 (用于 TTPOS 导出 price 列)
 ensureColumn('combos', 'price', 'REAL');
+// 毛利率: 物料从 Selling-Internal 同步的内部单价 + 含税标记 + 同步时间
+ensureColumn('materials', 'internal_price',     'REAL');                    // 对应 uom 的 Selling-Internal 单价
+ensureColumn('materials', 'internal_price_uom', 'TEXT');                    // 该价对应 uom(应=materials.uom)
+ensureColumn('materials', 'price_includes_tax', 'INTEGER NOT NULL DEFAULT 0'); // 1=价已含税(custom_tax=VAT Included),不再×税率
+ensureColumn('materials', 'tax_rate',           'REAL NOT NULL DEFAULT 0');    // 该物料 ERP Item Tax Template 税率(小数,如 0.07)
+ensureColumn('materials', 'tax_template',       'TEXT');                       // 来源 Item Tax Template 名(审计用)
+ensureColumn('materials', 'price_synced_at',    'TEXT');
+// 套餐售价分渠道(旧 price 保留向后兼容,数据迁移见 migrateComboPricesV1)
+ensureColumn('combos', 'price_takeout', 'REAL');
+ensureColumn('combos', 'price_dinein',  'REAL');
 
 export function getSetting(key) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
@@ -204,3 +214,15 @@ function migrateDefaultFolders() {
   tx();
 }
 migrateDefaultFolders();
+
+// 一次性迁移:把旧的单一 price 拆到堂食/外卖两列(仅填空,不覆盖已有渠道价)
+function migrateComboPricesV1() {
+  if (getSetting('combo_prices_split_v1')) return;
+  db.prepare(`UPDATE combos SET price_takeout = price WHERE price_takeout IS NULL AND price IS NOT NULL`).run();
+  db.prepare(`UPDATE combos SET price_dinein  = price WHERE price_dinein  IS NULL AND price IS NOT NULL`).run();
+  setSetting('combo_prices_split_v1', '1');
+}
+migrateComboPricesV1();
+
+// 税率默认 7%(可在 settings 调)
+if (getSetting('tax_rate') == null) setSetting('tax_rate', '0.07');

@@ -8,3 +8,8 @@ dist/
 *.sqlite-wal
 .DS_Store
 .env
+
+# 运行时与编排状态
+.omc/
+.run/
+*.db

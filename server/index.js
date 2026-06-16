@@ -10,6 +10,7 @@ import { ordersRouter } from './routes/orders.js';
 import { sharedBomsRouter } from './routes/sharedBoms.js';
 import { exportRouter } from './routes/export.js';
 import { erpRouter } from './routes/erp.js';
+import { marginRouter } from './routes/margin.js';
 import { authRouter } from './routes/auth.js';
 import { initAccessCodes, authMiddleware } from './auth.js';
 
@@ -38,6 +39,7 @@ app.use('/api/orders', ordersRouter);
 app.use('/api/shared-boms', sharedBomsRouter);
 app.use('/api/export', exportRouter);
 app.use('/api/erp', erpRouter);
+app.use('/api/margin', marginRouter);
 
 const PORT = Number(process.env.PORT || 3001);
 app.listen(PORT, () => console.log(`[bom-server] listening on http://localhost:${PORT}`));

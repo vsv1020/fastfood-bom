@@ -18,15 +18,15 @@ materialsRouter.get('/', (req, res) => {
 });
 
 materialsRouter.post('/', (req, res) => {
-  const { item_code, item_name, name_en, name_th, uom, category = 'raw', channel = null, source = 'manual' } = req.body || {};
+  const { item_code, item_name, name_en, name_th, uom, category = 'raw', channel = null, source = 'manual', price_includes_tax } = req.body || {};
   if (!item_code || !item_name) return res.status(400).json({ error: 'item_code and item_name required' });
   if (!['raw', 'packaging', 'sauce', 'other'].includes(category)) return res.status(400).json({ error: 'invalid category' });
   if (channel && !['takeout', 'dinein'].includes(channel)) return res.status(400).json({ error: 'invalid channel' });
   try {
     db.prepare(
-      `INSERT INTO materials(item_code, item_name, name_en, name_th, uom, category, channel, source)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(item_code, item_name, name_en || null, name_th || null, uom || null, category, channel, source);
+      `INSERT INTO materials(item_code, item_name, name_en, name_th, uom, category, channel, source, price_includes_tax)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(item_code, item_name, name_en || null, name_th || null, uom || null, category, channel, source, price_includes_tax ? 1 : 0);
     res.json(db.prepare('SELECT * FROM materials WHERE item_code = ?').get(item_code));
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -35,7 +35,7 @@ materialsRouter.post('/', (req, res) => {
 
 materialsRouter.put('/:item_code', (req, res) => {
   const { item_code } = req.params;
-  const { item_name, name_en, name_th, uom, category, channel } = req.body || {};
+  const { item_name, name_en, name_th, uom, category, channel, price_includes_tax } = req.body || {};
   const existing = db.prepare('SELECT * FROM materials WHERE item_code = ?').get(item_code);
   if (!existing) return res.status(404).json({ error: 'not found' });
   db.prepare(
@@ -46,6 +46,7 @@ materialsRouter.put('/:item_code', (req, res) => {
        uom       = COALESCE(?, uom),
        category  = COALESCE(?, category),
        channel   = ?,
+       price_includes_tax = ?,
        updated_at = datetime('now')
      WHERE item_code = ?`
   ).run(
@@ -55,6 +56,7 @@ materialsRouter.put('/:item_code', (req, res) => {
     uom ?? null,
     category ?? null,
     channel === undefined ? existing.channel : channel,
+    price_includes_tax === undefined ? existing.price_includes_tax : (price_includes_tax ? 1 : 0),
     item_code
   );
   res.json(db.prepare('SELECT * FROM materials WHERE item_code = ?').get(item_code));

@@ -10,7 +10,7 @@ import {
   Package, Droplet, Sigma, ChevronDown, Shuffle, Copy,
 } from 'lucide-react';
 import { api } from '../api';
-import type { Combo, ComboLine, ComboLineSubstitute, Product, Material, ComboBom, Channel, PackEntry, Folder } from '../types';
+import type { Combo, ComboLine, ComboLineSubstitute, Product, Material, ComboBom, Channel, PackEntry, Folder, ComboMargin } from '../types';
 import { useLang, useT, localizedName, materialName } from '../i18n';
 import { FolderTree, flattenFolders, type TreeItemData } from '../FolderTree';
 
@@ -76,6 +76,7 @@ export default function CombosPage() {
           title={t('title.bom_sets')}
           exportHref="/api/export/combos.csv"
           extraExports={[
+            { label: t('export.margin_xlsx'), href: '/api/export/margins.xlsx' },
             { label: t('export.final_bom'), href: '/api/export/combo-bom.csv' },
             { label: t('export.ttpos_full'), href: '/api/export/combo-ttpos.csv' },
           ]}
@@ -167,7 +168,8 @@ function ComboEditor({
   const [nameTh, setNameTh] = useState('');
   const [description, setDescription] = useState('');
   const [folderId, setFolderId] = useState<number | null>(presetFolderId);
-  const [price, setPrice] = useState('');
+  const [priceDinein, setPriceDinein] = useState('');
+  const [priceTakeout, setPriceTakeout] = useState('');
   const [lines, setLines] = useState<ComboLine[]>([]);
   const [pkgTo, setPkgTo] = useState<PackEntry[]>([]);
   const [pkgDi, setPkgDi] = useState<PackEntry[]>([]);
@@ -175,6 +177,7 @@ function ComboEditor({
   const [sauceDi, setSauceDi] = useState<PackEntry[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [cost, setCost] = useState<ComboMargin | null>(null);
 
   // BOM preview
   const [previewChannel, setPreviewChannel] = useState<Channel>('takeout');
@@ -210,7 +213,7 @@ function ComboEditor({
   useEffect(() => {
     if (comboId == null) {
       setCode(''); setName(''); setNameEn(''); setNameTh(''); setDescription(''); setLines([]);
-      setFolderId(presetFolderId); setPrice('');
+      setFolderId(presetFolderId); setPriceDinein(''); setPriceTakeout('');
       setPkgTo([]); setPkgDi([]); setSauceTo([]); setSauceDi([]);
       setBom(null); setErr(null);
       return;
@@ -220,7 +223,10 @@ function ComboEditor({
       setNameEn(c.name_en || ''); setNameTh(c.name_th || '');
       setDescription(c.description || '');
       setFolderId(c.folder_id ?? null);
-      setPrice(c.price == null ? '' : String(c.price));
+      const di = c.price_dinein ?? c.price;
+      const to = c.price_takeout ?? c.price;
+      setPriceDinein(di == null ? '' : String(di));
+      setPriceTakeout(to == null ? '' : String(to));
       setLines(c.lines || []);
       setPkgTo(c.packaging_takeout_codes || []); setPkgDi(c.packaging_dinein_codes || []);
       setSauceTo(c.sauce_takeout_codes || []); setSauceDi(c.sauce_dinein_codes || []);
@@ -233,6 +239,12 @@ function ComboEditor({
     if (comboId == null) { setBom(null); return; }
     api.comboBom(comboId, previewChannel).then(setBom).catch(() => setBom(null));
   }, [comboId, previewChannel, lines, pkgTo, pkgDi, sauceTo, sauceDi]);
+
+  // Load combo margin cost whenever comboId changes
+  useEffect(() => {
+    if (comboId == null) { setCost(null); return; }
+    api.getComboMargin(comboId).then(setCost).catch(() => setCost(null));
+  }, [comboId]);
 
   // Apply drop signal from the page-level DndContext
   useEffect(() => {
@@ -262,7 +274,8 @@ function ComboEditor({
         name_th: nameTh.trim() || null,
         description: description.trim() || null,
         folder_id: folderId,
-        price: price.trim() === '' ? null : Number(price),
+        price_dinein:  priceDinein.trim()  === '' ? null : Number(priceDinein),
+        price_takeout: priceTakeout.trim() === '' ? null : Number(priceTakeout),
         lines: lines.map((l) => ({ product_id: l.product_id, qty: l.qty, substitutes: l.substitutes })),
         packaging_takeout_codes: pkgTo, packaging_dinein_codes: pkgDi,
         sauce_takeout_codes: sauceTo, sauce_dinein_codes: sauceDi,
@@ -272,6 +285,7 @@ function ComboEditor({
         ? await api.createCombo(payload)
         : await api.updateCombo(comboId, payload);
       onSaved(c);
+      api.getComboMargin(c.id).then(setCost).catch(() => {});
     } catch (e: any) {
       setErr(e.message);
     } finally { setSaving(false); }
@@ -294,12 +308,14 @@ function ComboEditor({
         name_th: nameTh.trim() || null,
         description: description.trim() || null,
         folder_id: folderId,
-        price: price.trim() === '' ? null : Number(price),
+        price_dinein:  priceDinein.trim()  === '' ? null : Number(priceDinein),
+        price_takeout: priceTakeout.trim() === '' ? null : Number(priceTakeout),
         lines: lines.map((l) => ({ product_id: l.product_id, qty: l.qty, substitutes: l.substitutes })),
         packaging_takeout_codes: pkgTo, packaging_dinein_codes: pkgDi,
         sauce_takeout_codes: sauceTo, sauce_dinein_codes: sauceDi,
       } as any);
       onSaved(c);
+      api.getComboMargin(c.id).then(setCost).catch(() => {});
     } catch (e: any) {
       setErr(e.message);
     } finally { setSaving(false); }
@@ -307,9 +323,9 @@ function ComboEditor({
 
   return (
       <div className="h-full overflow-y-auto p-8 space-y-5">
-        <header className="flex items-start justify-between">
-          <div className="flex-1 max-w-2xl space-y-3">
-            <div>
+        <header className="space-y-3">
+          <div className="flex items-end justify-between gap-3">
+            <div className="flex-1 min-w-0">
               <label className="label flex items-center gap-2">
                 {t('editor.zh_main')}
                 <span className="font-mono text-[10px] text-slate-400 normal-case tracking-normal">
@@ -319,54 +335,58 @@ function ComboEditor({
               <input className="input mt-1" value={name}
                      onChange={(e) => setName(e.target.value)} placeholder="如 芝士牛肉堡套餐" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label">English Name</label>
-                <input className="input mt-1" value={nameEn}
-                       onChange={(e) => setNameEn(e.target.value)} placeholder="e.g. Cheese Beef Burger Set" />
-              </div>
-              <div>
-                <label className="label">ชื่อภาษาไทย</label>
-                <input className="input mt-1" value={nameTh}
-                       onChange={(e) => setNameTh(e.target.value)} placeholder="เช่น ชุดชีสบีฟเบอร์เกอร์" />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="label">{t('lbl.desc')} ({t('placeholder.optional')})</label>
-                <input className="input mt-1" value={description}
-                       onChange={(e) => setDescription(e.target.value)} />
-              </div>
-              <div>
-                <label className="label">{t('editor.folder')}</label>
-                <select className="input mt-1" value={folderId ?? ''}
-                        onChange={(e) => setFolderId(e.target.value === '' ? null : Number(e.target.value))}>
-                  <option value="">{t('folder.ungrouped')}</option>
-                  {flattenFolders(folders).map((f) => (
-                    <option key={f.id} value={f.id}>{f.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label">{t('editor.price')} ({t('placeholder.optional')})</label>
-                <input type="number" step="0.01" min="0" className="input mt-1" value={price}
-                       onChange={(e) => setPrice(e.target.value)} placeholder="79" />
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-2 mt-7">
-            {comboId != null && (
-              <button className="btn-danger" onClick={del}><Trash2 size={14} /> {t('btn.delete')}</button>
-            )}
-            {comboId != null && (
-              <button className="btn-outline" onClick={duplicate} disabled={saving} title={t('btn.duplicate')}>
-                <Copy size={14} /> {t('btn.duplicate')}
+            <div className="flex gap-2 shrink-0">
+              {comboId != null && (
+                <button className="btn-danger" onClick={del}><Trash2 size={14} /> {t('btn.delete')}</button>
+              )}
+              {comboId != null && (
+                <button className="btn-outline" onClick={duplicate} disabled={saving} title={t('btn.duplicate')}>
+                  <Copy size={14} /> {t('btn.duplicate')}
+                </button>
+              )}
+              <button className="btn-primary" onClick={save} disabled={saving || !name}>
+                <Save size={14} /> {t('btn.save')}
               </button>
-            )}
-            <button className="btn-primary" onClick={save} disabled={saving || !name}>
-              <Save size={14} /> {t('btn.save')}
-            </button>
+            </div>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">English Name</label>
+              <input className="input mt-1" value={nameEn}
+                     onChange={(e) => setNameEn(e.target.value)} placeholder="e.g. Cheese Beef Burger Set" />
+            </div>
+            <div>
+              <label className="label">ชื่อภาษาไทย</label>
+              <input className="input mt-1" value={nameTh}
+                     onChange={(e) => setNameTh(e.target.value)} placeholder="เช่น ชุดชีสบีฟเบอร์เกอร์" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">{t('lbl.desc')} ({t('placeholder.optional')})</label>
+              <input className="input mt-1" value={description}
+                     onChange={(e) => setDescription(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">{t('editor.folder')}</label>
+              <select className="input mt-1" value={folderId ?? ''}
+                      onChange={(e) => setFolderId(e.target.value === '' ? null : Number(e.target.value))}>
+                <option value="">{t('folder.ungrouped')}</option>
+                {flattenFolders(folders).map((f) => (
+                  <option key={f.id} value={f.id}>{f.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {/* 定价区:售价输入与对应渠道毛利率成对展示 */}
+          <PricingCard
+            cost={cost}
+            comboId={comboId}
+            priceTakeout={priceTakeout}
+            setPriceTakeout={setPriceTakeout}
+            priceDinein={priceDinein}
+            setPriceDinein={setPriceDinein}
+          />
         </header>
 
         {err && <div className="text-sm text-rose-600">{err}</div>}
@@ -397,6 +417,80 @@ function ComboEditor({
           unsaved={comboId == null}
         />
       </div>
+  );
+}
+
+const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+const money = (v: number) => `฿${v.toFixed(2)}`;
+
+function PricingCard({
+  cost, comboId, priceTakeout, setPriceTakeout, priceDinein, setPriceDinein,
+}: {
+  cost: ComboMargin | null;
+  comboId: number | null;
+  priceTakeout: string;
+  setPriceTakeout: (v: string) => void;
+  priceDinein: string;
+  setPriceDinein: (v: string) => void;
+}) {
+  const t = useT();
+
+  function channelRow(
+    label: string,
+    accent: string,
+    priceStr: string,
+    setPrice: (v: string) => void,
+    ch: import('../types').ComboMarginChannel | null,
+  ) {
+    const price = Number(priceStr);
+    const validPrice = priceStr.trim() !== '' && price > 0;
+    const incomplete = !!ch && !ch.complete;
+    const marginVal = ch && validPrice ? (price - ch.cost) / price : null;
+    const tip = incomplete
+      ? t('margin.missing_prefix') + ch!.missing.map((m) => m.item_name).join('、')
+      : undefined;
+
+    let marginColor = 'text-slate-400';
+    if (marginVal != null && !incomplete) marginColor = marginVal < 0 ? 'text-rose-600' : 'text-emerald-600';
+
+    return (
+      <div className="flex items-center gap-3">
+        <div className={`w-10 shrink-0 text-xs font-semibold ${accent}`}>{label}</div>
+        <div className="relative flex-1 min-w-0">
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">฿</span>
+          <input type="number" step="0.01" min="0"
+                 className="input pl-6 tabular-nums" value={priceStr}
+                 onChange={(e) => setPrice(e.target.value)} placeholder={t('editor.sale_price')} />
+        </div>
+        <div className="w-[5.5rem] shrink-0 text-right">
+          {ch == null ? (
+            <div className="text-[11px] text-slate-400 leading-tight">{t('combo.margin_after_save')}</div>
+          ) : (
+            <>
+              <div className={`text-2xl font-bold tabular-nums leading-none ${marginColor}`}>
+                {marginVal == null ? '—' : pct(marginVal)}
+              </div>
+              <div className={'text-[10px] mt-1 tabular-nums ' + (incomplete ? 'text-rose-500 font-medium' : 'text-slate-400')}
+                   title={tip}>
+                {t('combo.cost_label')} {money(ch.cost)}{incomplete && <span className="ml-0.5">⚠</span>}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const toCh = comboId == null || cost == null ? null : cost.takeout;
+  const diCh = comboId == null || cost == null ? null : cost.dinein;
+  return (
+    <div className="card p-4 border border-slate-200 bg-white">
+      <div className="text-[11px] text-slate-400 mb-3">{t('combo.pricing_title')}</div>
+      <div className="divide-y divide-slate-100">
+        <div className="pb-3">{channelRow(t('combo.ch_takeout'), 'text-sky-700', priceTakeout, setPriceTakeout, toCh)}</div>
+        <div className="pt-3">{channelRow(t('combo.ch_dinein'), 'text-violet-700', priceDinein, setPriceDinein, diCh)}</div>
+      </div>
+    </div>
   );
 }
 
